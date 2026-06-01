@@ -67,9 +67,9 @@ export function CodeDisplay({ config }: CodeDisplayProps) {
   const lines = activeFileData.content.split('\n');
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg flex flex-col h-full overflow-hidden">
+    <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl shadow-2xl flex flex-col h-full overflow-hidden">
       {/* File Select Tab Bar */}
-      <div className="flex items-center justify-between bg-slate-950/60 border-b border-slate-800/80 px-4 py-2 flex-wrap gap-2">
+      <div className="flex items-center justify-between bg-[#0A0A0B] border-b border-neutral-800 px-4 py-2 flex-wrap gap-2">
         <div className="flex space-x-1 overflow-x-auto">
           {(['java', 'build', 'readme', 'run'] as const).map((tab) => {
             const data = filesConfig[tab];
@@ -80,10 +80,10 @@ export function CodeDisplay({ config }: CodeDisplayProps) {
                 id={`btn-code-tab-${tab}`}
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all whitespace-nowrap ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all whitespace-nowrap ${
                   IsActive
-                    ? 'bg-slate-800 text-indigo-400 font-semibold shadow-inner border border-slate-700/50'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'bg-[#16161A] text-indigo-400 font-bold shadow-inner border border-neutral-800'
+                    : 'text-neutral-450 hover:text-white hover:bg-[#16161A]/40'
                 }`}
               >
                 <TabIcon className="h-3.5 w-3.5" />
@@ -97,7 +97,7 @@ export function CodeDisplay({ config }: CodeDisplayProps) {
         <button
           id="btn-copy-code-content"
           onClick={handleCopy}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-slate-800 lg:hover:bg-slate-700 text-slate-300 hover:text-white font-medium text-xs border border-slate-700/80 shadow-sm cursor-pointer transition-all active:scale-95"
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-[#16161A] hover:bg-[#1E1E24] text-neutral-300 hover:text-white font-semibold text-xs border border-neutral-800 shadow-xl cursor-pointer transition-all active:scale-95"
         >
           {copied ? (
             <>
@@ -114,17 +114,17 @@ export function CodeDisplay({ config }: CodeDisplayProps) {
       </div>
 
       {/* Path Breadcrumb bar */}
-      <div className="bg-slate-950/20 text-slate-500 font-mono text-[10px] px-5 py-2 border-b border-slate-800/50 flex justify-between items-center select-all">
-        <span>Project Path: <strong className="text-slate-400 font-normal">{activeFileData.path}</strong></span>
-        <span className="uppercase text-[9px] text-slate-600 bg-slate-950/40 px-1.5 py-0.5 rounded font-bold border border-slate-800/30">
+      <div className="bg-black/20 text-neutral-500 font-mono text-[10px] px-5 py-2 border-b border-neutral-850 flex justify-between items-center select-all">
+        <span>Project Path: <strong className="text-neutral-450 font-normal">{activeFileData.path}</strong></span>
+        <span className="uppercase text-[9px] text-indigo-450 bg-indigo-550/5 px-2 py-0.5 rounded font-bold border border-indigo-500/10">
           {activeFileData.lang}
         </span>
       </div>
 
       {/* Code Body */}
-      <div className="flex-1 overflow-auto bg-slate-950 p-4 font-mono text-xs text-slate-300 leading-relaxed flex select-text">
+      <div className="flex-1 overflow-auto bg-black p-4 font-mono text-xs text-neutral-300 leading-relaxed flex select-text">
         {/* Line numbers column */}
-        <div className="text-slate-600 text-right pr-4 select-none border-r border-slate-800/30 font-light select-none tracking-tight leading-relaxed">
+        <div className="text-neutral-600 text-right pr-4 select-none border-r border-neutral-850 font-light tracking-tight leading-relaxed">
           {lines.map((_, idx) => (
             <div key={idx} className="h-[21px] text-[10px]">
               {idx + 1}
@@ -136,9 +136,9 @@ export function CodeDisplay({ config }: CodeDisplayProps) {
         <pre className="pl-4 flex-1 overflow-x-auto whitespace-pre scrolling-touch leading-relaxed">
           {lines.map((line, idx) => {
             // Apply a very rudimentary styling colorizer to highlight notes, imports, etc to make it look premium
-            let colorClass = 'text-slate-300';
+            let colorClass = 'text-neutral-300';
             if (line.trim().startsWith('//') || line.trim().startsWith('/*') || line.trim().startsWith('*')) {
-              colorClass = 'text-slate-500 italic';
+              colorClass = 'text-neutral-550 italic';
             } else if (line.trim().startsWith('import ') || line.trim().startsWith('package ')) {
               colorClass = 'text-indigo-400';
             } else if (line.includes('public class ') || line.includes('public static void ')) {

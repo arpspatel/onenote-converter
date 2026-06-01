@@ -161,12 +161,12 @@ Preserving anchor images and paragraph vectors... Done.`,
   }, [isRunning]);
 
   return (
-    <div className="bg-slate-900 text-slate-100 rounded-xl border border-slate-800 shadow-2xl p-6 font-mono text-xs overflow-hidden">
+    <div className="bg-[#0E0E10] text-neutral-350 rounded-xl border border-neutral-800 shadow-2xl p-6 font-mono text-xs overflow-hidden">
       {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+      <div className="flex items-center justify-between border-b border-neutral-850 pb-4 mb-4">
         <div className="flex items-center space-x-2">
           <Terminal className="h-4 w-4 text-emerald-400" />
-          <span className="font-semibold text-slate-300">Converter Simulation CLI Sandbox</span>
+          <span className="font-bold text-xs uppercase tracking-widest text-[#E1E1E6]">Converter Simulation CLI Sandbox</span>
         </div>
         <div className="flex space-x-1.5">
           <div className="w-3 h-3 rounded-full bg-rose-500/80"></div>
@@ -175,20 +175,20 @@ Preserving anchor images and paragraph vectors... Done.`,
         </div>
       </div>
 
-      <div className="mb-4 text-slate-400 leading-relaxed text-[11px]">
+      <div className="mb-4 text-neutral-500 leading-relaxed text-[11.5px] font-sans">
         Test your script configuration inside our secure emulation sandbox. This simulates how the compiled Java code runs, loads files, resolves the external Aspose repository coordinates, and renders the layout.
       </div>
 
       {/* Buttons */}
-      <div className="flex flex-wrap gap-3 mb-5">
+      <div className="flex flex-wrap gap-3 mb-5 font-sans">
         <button
           id="btn-trigger-simulator"
           onClick={triggerSimulation}
           disabled={isRunning}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg font-sans text-xs font-semibold tracking-wide transition-all ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-xs font-bold tracking-wider transition-all cursor-pointer ${
             isRunning
-              ? 'bg-emerald-600/20 text-emerald-400 cursor-not-allowed border border-emerald-500/30'
-              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shadow-md shadow-emerald-500/10 cursor-pointer active:scale-95'
+              ? 'bg-[#16161A] text-emerald-400 cursor-not-allowed border border-emerald-500/10'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-black shadow-lg shadow-emerald-500/5 active:scale-95'
           }`}
         >
           {isRunning ? (
@@ -208,7 +208,7 @@ Preserving anchor images and paragraph vectors... Done.`,
           <button
             id="btn-reset-simulator"
             onClick={resetSimulation}
-            className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800 lg:hover:bg-slate-700 text-slate-300 font-sans text-xs border border-slate-700 cursor-pointer transition-colors"
+            className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-[#16161A] lg:hover:bg-[#1E1E24] text-neutral-450 hover:text-white text-xs border border-neutral-850 cursor-pointer transition-colors"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>Clear Logs</span>
@@ -218,7 +218,7 @@ Preserving anchor images and paragraph vectors... Done.`,
 
       {/* Progress Line */}
       {isRunning && (
-        <div className="w-full bg-slate-800 h-1.5 rounded-full mb-4 overflow-hidden">
+        <div className="w-full bg-neutral-850 h-1.5 rounded-full mb-4 overflow-hidden">
           <div
             className="bg-emerald-400 h-full rounded-full transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -229,16 +229,16 @@ Preserving anchor images and paragraph vectors... Done.`,
       {/* Terminal logs container */}
       <div
         ref={logContainerRef}
-        className="bg-slate-950/80 rounded-lg p-4 h-[240px] overflow-y-auto border border-slate-800/80 font-mono text-[11px] leading-relaxed text-slate-300 space-y-2 select-text"
+        className="bg-black/60 backdrop-blur-md rounded-lg p-4 h-[240px] overflow-y-auto border border-neutral-850 font-mono text-[11px] leading-relaxed text-neutral-300 space-y-2 select-text shadow-inner"
       >
         {logs.length === 0 ? (
-          <div className="text-slate-600 h-full flex flex-col items-center justify-center text-center px-4 font-sans space-y-2">
-            <Terminal className="h-8 w-8 text-slate-700 stroke-[1.5]" />
+          <div className="text-neutral-600 h-full flex flex-col items-center justify-center text-center px-4 font-sans space-y-2">
+            <Terminal className="h-8 w-8 text-neutral-700 stroke-[1.5]" />
             <p>Terminal idle. Click "Simulate Run" above to start the layout compiler compilation.</p>
           </div>
         ) : (
           logs.map((log, index) => (
-            <div key={index} className="whitespace-pre-wrap animate-fade-in border-l-2 border-slate-800 pl-2.5 py-0.5">
+            <div key={index} className="whitespace-pre-wrap animate-fade-in border-l-2 border-neutral-800 pl-2.5 py-0.5">
               {log}
             </div>
           ))
@@ -247,15 +247,15 @@ Preserving anchor images and paragraph vectors... Done.`,
 
       {/* Success Simulation Container */}
       {demoPdfUrl && (
-        <div className="mt-5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 animate-fade-in text-slate-200">
+        <div className="mt-5 bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4 animate-fade-in text-neutral-300">
           <div className="flex items-start space-x-3">
             <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <h4 className="font-heading font-semibold text-slate-200 text-xs text-emerald-300">
+              <h4 className="font-heading font-bold uppercase tracking-wider text-[#A1E4C0] text-xs">
                 Simulation Completed Safely!
               </h4>
-              <p className="font-sans text-[11px] text-slate-400 leading-normal">
-                PDF successfully constructed with high-fidelity margins. Ready to convert your actual OneNote notebooks on your server. Click the <strong className="text-slate-300">"Download Project .ZIP"</strong> tool on the sidebar to get your final configured Java codebase!
+              <p className="font-sans text-[11px] text-neutral-450 leading-normal">
+                PDF successfully constructed with high-fidelity margins. Ready to convert your actual OneNote notebooks on your server. Click the <strong className="text-neutral-300">"Download Project .ZIP"</strong> tool on the sidebar to get your final configured Java codebase!
               </p>
             </div>
           </div>
