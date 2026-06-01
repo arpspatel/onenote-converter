@@ -1,6 +1,6 @@
 {
-  "name": "OneNote to PDF Java Script Generator",
-  "description": "Directly upload and convert Microsoft OneNote (.one) files to beautifully formatted PDFs, or generate self-contained programmatic Java script bundles easily.",
+  "name": "Note2PDF Watermark-Free Converter",
+  "description": "Directly upload and convert multiple Microsoft OneNote (.one) files to beautifully formatted PDFs with zero watermarks or trial limitations.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

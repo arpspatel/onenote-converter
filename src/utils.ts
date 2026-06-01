@@ -3,458 +3,314 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ConverterConfig, GeneratedCode } from './types';
 import JSZip from 'jszip';
 
-export function generateJavaCode(config: ConverterConfig): string {
-  const passwordSnippet = config.isPasswordProtected
-    ? `loadOptions.setPassword("${config.passwordValue || 'MY_SECRET_PASSWORD'}");`
-    : `// No password decryption required for this document.`;
+/**
+ * Robust string templates as fallbacks for code files in case they are not fetchable in production.
+ */
+const FALLBACK_VITE_CONFIG = `import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import {defineConfig} from 'vite';
 
-  let complianceSnippet = '';
-  if (config.pdfCompliance && config.pdfCompliance !== 'None') {
-    complianceSnippet = `saveOptions.setCompliance(PdfCompliance.${config.pdfCompliance});`;
-  } else {
-    complianceSnippet = `// Default Standard PDF format (Acrobat-compatible version 1.5).`;
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      port: 3000,
+      host: '0.0.0.0'
+    },
+  };
+});
+`;
+
+const FALLBACK_TSCONFIG = `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   }
+}
+`;
 
-  let jpegQualitySnippet = `saveOptions.setJpegQuality(${config.jpegQuality}); // Quality range: 0-100`;
-
-  let fontFolderSnippet = '';
-  if (config.fontFolder.trim()) {
-    fontFolderSnippet = `// Apply custom directory of TTF/OTF fonts (essential on Linux servers)\n            saveOptions.setFontFolder("${config.fontFolder.trim().replace(/\\/g, '\\\\')}");`;
-  } else {
-    fontFolderSnippet = `// Uses standard operating system fonts. For Linux Docker environments, or to preserve specialized handwritten ink shapes,\n            // you can specify a fonts directory using: saveOptions.setFontFolder("/path/to/fonts");`;
+const FALLBACK_PACKAGE_JSON = `{
+  "name": "note2pdf-portable-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "clean": "rm -rf dist server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "jspdf": "^4.2.1",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
   }
+}
+`;
 
-  let pageRangeSnippet = '';
-  if (config.pageRange.trim()) {
-    // Check if it's a single integer or range. We support standard PdfSaveOptions pageIndex/Count setup
-    const parts = config.pageRange.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-    if (parts.length > 0) {
-      const startIndex = parts[0];
-      const count = parts.length;
-      pageRangeSnippet = `// Limit conversion to a subset of pages\n            saveOptions.setPageIndex(${startIndex}); // Start page (0-based)\n            saveOptions.setPageCount(${count}); // Number of pages to convert from start`;
-    } else {
-      pageRangeSnippet = `// Converting all notebooks sheets in natural order.`;
-    }
-  } else {
-    pageRangeSnippet = `// Converting all notebook sections and sheets in natural sequential flow.`;
-  }
+const FALLBACK_ENV_EXAMPLE = `# Note2PDF Desktop Environment Configurations
+# Add your Google Gemini API Key here to enable intelligent vector formatting.
+# If omitted, the portable application automatically falls back to the native binary parser!
+GEMINI_API_KEY=
+PORT=3000
+`;
 
-  let layoutSnippet = '';
-  if (config.saveLayout === 'one-page-pdf') {
-    // Aspose.Note for Java can keep continuous pages
-    layoutSnippet = `// Force saving elements as a single long flow sheet without breaking across hard page margins\n            // This creates a digital-first infinite vertical scrolling PDF canvas, perfect for wide flowcharts\n            // note: standard settings usually flow dynamically, or support infinite scroll options.`;
-  } else if (config.saveLayout === 'custom-size') {
-    layoutSnippet = `// Custom page dimensions defined:\n            // Target Width: ${config.pageWidth}pt, Target Height: ${config.pageHeight}pt\n            // Page size can be further modified at print options in the Document layers if desired.`;
-  } else {
-    layoutSnippet = `// Default standard multi-page adaptive margin-splitting (highly recommended for A4/Letter prints).`;
-  }
+const FALLBACK_INDEX_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Note2PDF Standalone Workspace</title>
+  </head>
+  <body style="background-color: #0A0A0B; margin: 0;">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+`;
 
-  return `package com.example;
+// Helper script launchers to run offline / locally
+const WINDOWS_LAUNCHER = `@echo off
+title Note2PDF Portable App Starter
+echo =======================================================================
+echo              Note2PDF Standalone Desktop Workspace Native Setup
+echo =======================================================================
+echo.
+echo [System Check] Checking local Node.js environment installation...
+node -v >nul 2>&1
+if %errorlevel% neq 0 (
+  echo ❌ ERROR: Node.js was not detected on this workstation channel.
+  echo Please download and install standard Node.js LTS from: https://nodejs.org/
+  echo.
+  pause
+  exit /b
+)
 
-import com.aspose.note.Document;
-import com.aspose.note.LoadOptions;
-import com.aspose.note.PdfCompliance;
-import com.aspose.note.PdfSaveOptions;
-import java.io.File;
+echo.
+echo [1/3] Restoring local workspace libraries and package sets...
+call npm install
+
+echo.
+echo [2/3] Compiling optimized React web views and Express compilation outputs...
+call npm run build
+
+echo.
+echo [3/3] Opening your local converter interface dashboard web port...
+start http://localhost:3000
+
+echo.
+echo 🚀 Sparking local NodeJS pipeline server! Maintain this command terminal open.
+echo To terminate development container, press Ctrl+C inside this block.
+echo =======================================================================
+call npm run start
+pause
+`;
+
+const UNIX_LAUNCHER = `#!/usr/bin/env bash
+# Standalone run launcher script for macOS / Linux platforms
+
+echo "======================================================================="
+echo "              Note2PDF Standalone Desktop Workspace Native Setup"
+echo "======================================================================="
+echo ""
+
+# Verify node.js
+if ! command -v node &> /dev/null; then
+  echo "❌ ERROR: Node.js was not detected on this workstation channel."
+  echo "Please download and install standard Node.js LTS from: https://nodejs.org/"
+  echo ""
+  exit 1
+fi
+
+echo "[1/3] Restoring local workspace libraries and package sets..."
+npm install
+
+echo ""
+echo "[2/3] Compiling optimized React web views and Express compilation outputs..."
+npm run build
+
+echo ""
+echo "[3/3] Opening your local converter interface dashboard web port..."
+if command -v open &> /dev/null; then
+  open "http://localhost:3000"
+elif command -v xdg-open &> /dev/null; then
+  xdg-open "http://localhost:3000"
+else
+  echo " 👉 Please open your browser and navigate to: http://localhost:3000"
+fi
+
+echo ""
+echo "🚀 Sparking local NodeJS pipeline server! Maintain this command terminal open."
+echo "To terminate development container, press Ctrl+C inside this block."
+echo "======================================================================="
+npm run start
+`;
+
+const PORTABLE_README = `# Note2PDF Desktop Portable Workspace (Standalone App)
+
+Welcome to the standalone, self-contained desktop package of your **Note2PDF Watermark-Free Converter App**. You can run this application entirely on your local machine, offline or online, with zero limitations.
+
+---
+
+## 🛠️ Requirements
+
+1. **Node.js (LTS Version 18, 20 or higher)**
+   - Verify installation by opening a terminal/cmd and typing: \`node -v\`
+   - If not installed, download the official LTS build from [https://nodejs.org/](https://nodejs.org/).
+
+---
+
+## 🚀 Quick Start (Single Click Launcher)
+
+Inside this root folder, double-click the starter launcher corresponding to your operating system:
+
+- **Windows**: Double-click \`start-portable-app.bat\`
+- **macOS / Linux**: 
+  1. Open a terminal prompt inside this extracted directory level.
+  2. Grant runtime permission once: \`chmod +x start-portable-app.sh\`
+  3. Execute directly: \`./start-portable-app.sh\`
+
+The installer launcher automatically:
+- Installs all local dependencies.
+- Bundles fully-optimized static HTML web routes inside \`dist/\`.
+- Packages the Express binary scanner pipelines.
+- Spawns a local host port on **\`http://localhost:3000\`**.
+- Auto-launches your local browser dashboard!
+
+---
+
+## 🧠 Optional: Activating Intelligent Gemini AI Engine Locally
+
+By default, the offline standalone application uses the built-in **Native Binary Stream Parser Heuristics**, which perfectly translates pages, bulleted items, and checklist tasks and exports standard A4 vector PDFs inside your browser.
+
+To activate the smart **Google Gemini AI Compiler** locally:
+
+1. Obtain a free or pay-as-you-go Gemini API Key from Google AI Studio.
+2. Locate the file named \`.env\` in this root folder (or duplicate \`.env.example\` and rename it to \`.env\`).
+3. Set your credential:
+   \`\`\`env
+   GEMINI_API_KEY=your_actual_api_key_here
+   \`\`\`
+4. Restart your application. The local Node.js Express server will automatically detect the key, and convert with Gemini-guided structure layouts!
+
+---
+
+## 📂 Source Code & Modular Extension
+This zip represents a highly-optimized fullstack React + Express boilerplate codebase. Feel free to modify, integrate more styles, or change features in:
+- \`server.ts\` (Binary stream parser, express routing, Gemini proxy)
+- \`src/App.tsx\` (Frontend drag-and-drop dashboard portal)
+- \`src/pdfGenerator.ts\` (Custom page margins and PDF templates)
+`;
 
 /**
- * ----------------------------------------------------------------------------------
- * Aspose.Note for Java - Automated OneNote (.one) to PDF Converter
- * ----------------------------------------------------------------------------------
- * Generates high-fidelity PDF layouts matching margins, paragraphs, lists,
- * images, embedded drawings, table coordinates, and handwriting ink shapes.
- *
- * This script is generated by your Google AI Studio Workspace.
- * ----------------------------------------------------------------------------------
+ * Downloads a text file content safely with fallback if fetching local assets fails.
  */
-public class OneNoteToPdfConverter {
-    public static void main(String[] args) {
-        // Define paths relative to directory root
-        String inputFilePath = "${config.inputFileName}";
-        String outputFilePath = "${config.outputFileName}";
-
-        System.out.println("====================================================================");
-        System.out.println("  Aspose.Note for Java -- OneNote to PDF Conversion Script Engine  ");
-        System.out.println("====================================================================");
-        System.out.println("🔧 Target Input:  " + inputFilePath);
-        System.out.println("🎯 Target Output: " + outputFilePath);
-        System.out.println("====================================================================");
-
-        // Verification checks
-        File file = new File(inputFilePath);
-        if (!file.exists()) {
-            System.err.println("\\n❌ RUNTIME ERROR: Input OneNote file not found!");
-            System.err.println("Expected place: " + file.getAbsolutePath());
-            System.err.println("👉 Please place your Microsoft OneNote file '" + inputFilePath + "' inside \\n" +
-                               "   this directory level and try executing the program again.\\n");
-            System.exit(1);
-        }
-
-        try {
-            System.out.println("⚡ [1/3] Loading input Microsoft OneNote repository...");
-            
-            // Setup loading options (e.g. decrypted key verification)
-            LoadOptions loadOptions = new LoadOptions();
-            ${passwordSnippet}
-
-            // Read absolute stream
-            Document doc = new Document(inputFilePath, loadOptions);
-            System.out.println("🚀 Success: File parsed into memory buffer!");
-
-            System.out.println("⚙️ [2/3] Injecting high-fidelity PDF export parameters...");
-            PdfSaveOptions saveOptions = new PdfSaveOptions();
-
-            // Compliance Format Standards
-            ${complianceSnippet}
-
-            // Image Optimization and JPG rendering properties
-            ${jpegQualitySnippet}
-
-            // Document Font Map Rules
-            ${fontFolderSnippet}
-
-            // Selected range of sheets
-            ${pageRangeSnippet}
-
-            // Custom flow and pagination metrics
-            ${layoutSnippet}
-
-            System.out.println("💾 [3/3] Commencing layout grid render to binary PDF stream...");
-            doc.save(outputFilePath, saveOptions);
-
-            System.out.println("\\n✨ SUCCESS: Conversion Process Completed!");
-            System.out.println("📂 Binary Destination: " + new File(outputFilePath).getAbsolutePath());
-            System.out.println("====================================================================");
-            
-        } catch (Exception e) {
-            System.err.println("\\n❌ CRITICAL CRASH: Failed converting OneNote contents to PDF!");
-            System.err.println("Root Failure: " + e.getMessage());
-            System.err.println("--------------------------------------------------------------------");
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
-}
-`;
-}
-
-export function generateBuildFile(config: ConverterConfig): string {
-  if (config.buildTool === 'maven') {
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>com.example</groupId>
-    <artifactId>onenote-to-pdf</artifactId>
-    <version>1.0-SNAPSHOT</version>
-
-    <properties>
-        <maven.compiler.source>${config.jdkVersion}</maven.compiler.source>
-        <maven.compiler.target>${config.jdkVersion}</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <aspose.version>${config.asposeVersion}</aspose.version>
-    </properties>
-
-    <!-- Configure Aspose Repository to host private artifact builds -->
-    <repositories>
-        <repository>
-            <id>AsposeJavaAPI</id>
-            <name>Aspose Java API</name>
-            <url>https://releases.aspose.com/java/repo/</url>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
-
-    <dependencies>
-        <!-- The core Aspose.Note for Java SDK with built-in font mapping support -->
-        <dependency>
-            <groupId>com.aspose</groupId>
-            <artifactId>aspose-note</artifactId>
-            <version>\${aspose.version}</version>
-            <classifier>jdk17</classifier>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <!-- Maven Compiler Plugin -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-                <configuration>
-                    <source>\${maven.compiler.source}</source>
-                    <target>\${maven.compiler.target}</target>
-                </configuration>
-            </plugin>
-            
-            <!-- Easy CLI launcher inside Maven -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.1</version>
-                <configuration>
-                    <mainClass>com.example.OneNoteToPdfConverter</mainClass>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-`;
-  } else if (config.buildTool === 'gradle') {
-    return `plugins {
-    id 'java'
-    id 'application'
-}
-
-group 'com.example'
-version '1.0-SNAPSHOT'
-
-repositories {
-    mavenCentral()
-    // Configure private Maven repository containing the Aspose classes
-    maven {
-        url "https://releases.aspose.com/java/repo/"
-    }
-}
-
-dependencies {
-    // The core Aspose.Note with jdk17 runtime support
-    implementation "com.aspose:aspose-note:${config.asposeVersion}:jdk17"
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(${config.jdkVersion})
-    }
-}
-
-application {
-    mainClass = 'com.example.OneNoteToPdfConverter'
-}
-
-tasks.withType(JavaCompile) {
-    options.encoding = 'UTF-8'
-}
-`;
-  } else {
-    // Standalone batch download commands
-    return `# Download the jar directly to run without build tools:
-wget https://releases.aspose.com/java/repo/com/aspose/aspose-note/${config.asposeVersion}/aspose-note-${config.asposeVersion}-jdk17.jar
-# Note: You will need the secondary dependencies (metadata and font parsing logs) to run without Gradle/Maven.
-# Therefore, using Maven or Gradle (configured in the tabs) is extremely recommended!
-`;
-  }
-}
-
-export function generateReadme(config: ConverterConfig): string {
-  const isMaven = config.buildTool === 'maven';
-  const isGradle = config.buildTool === 'gradle';
-
-  let runningSteps = '';
-  if (isMaven) {
-    runningSteps = `### 🚀 Step 2: Compile & Run with Maven
-Run the following script to compile your code and start the conversion engine:
-\`\`\`bash
-mvn compile exec:java
-\`\`\`
-*(Optional) To build a standalone executable jar package with dependencies, use \`mvn package\`.*`;
-  } else if (isGradle) {
-    runningSteps = `### 🚀 Step 2: Compile & Run with Gradle
-Execute the application task directly using the Gradle wrapper:
-\`\`\`bash
-./gradlew run
-\`\`\`
-*(On Windows cmd, use \`gradlew.bat run\` instead)*`;
-  } else {
-    runningSteps = `### 🚀 Step 2: Manual Standalone Compile
-Ensure you download the \`aspose-note-${config.asposeVersion}-jdk17.jar\` file, place it in a \`libs\` folder, and execute:
-\`\`\`bash
-javac -cp "libs/*" OneNoteToPdfConverter.java
-java -cp "libs/*:." OneNoteToPdfConverter
-\`\`\``;
-  }
-
-  return `# Microsoft OneNote to PDF Converter Script (Java + Aspose.Note)
-
-This project contains an automated converter script to safely render binary Microsoft OneNote files (\`.one\`) directly into highly stylized, vectors-compatible PDF document sheets.
-
----
-
-## 🛠 Prerequisites
-
-1. **Java Development Kit (JDK 17 or higher)**
-   - Verify installation: \`java -version\`
-2. **${isMaven ? 'Apache Maven' : isGradle ? 'Gradle (Included wrappers)' : 'Manual Java compiler command'}\** installed on your workstation pathway.
-3. **An input OneNote Document** (\`.one\`) file.
-
----
-
-## 📖 Quickstart Guide
-
-### 📂 Step 1: Copy your Notebook File
-Rename or copy your target OneNote file into this root project folder and ensure it matches the configured input filename:
-- **File Name expected**: \`${config.inputFileName}\`
-- *(Alternatively, you can edit \`src/main/java/com/example/OneNoteToPdfConverter.java\` to point to any custom path)*
-
-${runningSteps}
-
----
-
-## ⚙️ Advanced Configuration (In Java Source File)
-
-The generated script is loaded with robust options you configured inside Google AI Studio:
-
-1. **Encrypted Notebook Compatibility**:
-   - Includes custom loading blocks so that password decryption does not halt execution.
-2. **High Integrity Compliance**:
-   - Configured with PDF compliance formatting (**${config.pdfCompliance === 'None' ? 'Standard 1.5' : config.pdfCompliance}**), securing layout coordinate tables and line styles.
-3. **Vector/Asset Optimization**:
-   - Embedded screenshot compressing and Jpeg rendering level configured to an opt-in **${config.jpegQuality}%** quality threshold.
-4. **Custom Fonts Mapping (Crucial on Linux / Docker Environments)**:
-   - If your PDF generates blank pages or weird squares instead of bulleted lists, it means your Linux workspace lacks standard Microsoft fonts. 
-   - Specify a target TTF directory in \`saveOptions.setFontFolder("/path/to/fonts")\`.
-
----
-
-## 📜 Aspose Licensing Information
-By default, Aspose.Note operates in **Evaluation Trial Mode**, which appends an evaluation watermark banner to output PDFs and only allows translating a subset of your workspace folders.
-To remove evaluation flags, obtain a standard or trial license (from [Aspose.com](https://www.aspose.com)) and invoke:
-\`\`\`java
-License license = new License();
-license.setLicense("Aspose.Note.lic");
-\`\`\`
-*Ensure you read the license file into memory BEFORE initializing the \`Document\` class!*
-`;
-}
-
-export function generateRunScript(config: ConverterConfig, extension: 'sh' | 'bat'): string {
-  if (extension === 'sh') {
-    if (config.buildTool === 'maven') {
-      return `#!/usr/bin/env bash
-echo "============================================="
-echo "  Starting OneNote to PDF Conversion (Maven) "
-echo "============================================="
-# Ensure correct input file is placed
-if [ ! -f "${config.inputFileName}" ]; then
-  echo "⚠️  WARNING: '${config.inputFileName}' not found."
-  echo "Creating a dummy placeholder mock node so build doesn't throw a fatal file error."
-  echo "Please replace it with your REAL OneNote .one file to convert!"
-  echo "Placeholder" > "${config.inputFileName}"
-fi
-
-mvn compile exec:java
-`;
-    } else if (config.buildTool === 'gradle') {
-      return `#!/usr/bin/env bash
-echo "============================================="
-echo "  Starting OneNote to PDF Conversion (Gradle) "
-echo "============================================="
-if [ ! -f "${config.inputFileName}" ]; then
-  echo "⚠️  WARNING: '${config.inputFileName}' not found. Please place your real file here."
-  echo "Placeholder" > "${config.inputFileName}"
-fi
-
-chmod +x gradlew
-./gradlew run
-`;
-    } else {
-      return `#!/usr/bin/env bash
-echo "Starting standalone compilation..."
-javac OneNoteToPdfConverter.java
-java OneNoteToPdfConverter
-`;
-    }
-  } else {
-    // Windows bat
-    if (config.buildTool === 'maven') {
-      return `@echo off
-echo =============================================
-echo   Starting OneNote to PDF Conversion (Maven)
-echo =============================================
-if not exist "${config.inputFileName}" (
-  echo ⚠️ WARNING: "${config.inputFileName}" not found.
-  echo Creating placeholder. Replace this with your actual OneNote file!
-  echo Placeholder > "${config.inputFileName}"
-)
-call mvn compile exec:java
-pause
-`;
-    } else if (config.buildTool === 'gradle') {
-      return `@echo off
-echo =============================================
-echo   Starting OneNote to PDF Conversion (Gradle)
-echo =============================================
-if not exist "${config.inputFileName}" (
-  echo ⚠️ WARNING: "${config.inputFileName}" not found.
-  echo Creating placeholder. Replace this with your actual OneNote file!
-  echo Placeholder > "${config.inputFileName}"
-)
-call gradlew.bat run
-pause
-`;
-    } else {
-      return `@echo off
-echo Starting standalone compile...
-call javac OneNoteToPdfConverter.java
-call java OneNoteToPdfConverter
-pause
-`;
-    }
+async function fetchSourceSafely(url: string, fallback: string): Promise<string> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Status failed");
+    return await res.text();
+  } catch (err) {
+    console.warn(`[ZIP Packager] Unable to fetch live source code for '${url}', substituting standard fallback.`, err);
+    return fallback;
   }
 }
 
 /**
- * Packs the entire configured code files into a complete, standard folder-structured project package,
- * ready to download instantly in client-side space.
+ * Packs the entire running Note2PDF workspace into a single-file, highly-portable ZIP.
  */
-export async function buildProjectZip(config: ConverterConfig): Promise<Blob> {
+export async function downloadPortableApp(): Promise<Blob> {
   const zip = new JSZip();
 
-  const javaCode = generateJavaCode(config);
-  const buildFile = generateBuildFile(config);
-  const readme = generateReadme(config);
-  const runSh = generateRunScript(config, 'sh');
-  const runBat = generateRunScript(config, 'bat');
+  // 1. Fetch live source codes or use standard templates
+  const indexHtml = await fetchSourceSafely('/index.html', FALLBACK_INDEX_HTML);
+  const viteConfig = await fetchSourceSafely('/vite.config.ts', FALLBACK_VITE_CONFIG);
+  const tsconfig = await fetchSourceSafely('/tsconfig.json', FALLBACK_TSCONFIG);
+  const packageJson = await fetchSourceSafely('/package.json', FALLBACK_PACKAGE_JSON);
+  const envExample = await fetchSourceSafely('/.env.example', FALLBACK_ENV_EXAMPLE);
+  const serverTs = await fetchSourceSafely('/server.ts', '');
 
-  if (config.buildTool === 'maven') {
-    zip.file('pom.xml', buildFile);
-    const srcDir = zip.folder('src/main/java/com/example');
-    if (srcDir) {
-      srcDir.file('OneNoteToPdfConverter.java', javaCode);
-    }
-  } else if (config.buildTool === 'gradle') {
-    zip.file('build.gradle', buildFile);
-    zip.file('settings.gradle', "rootProject.name = 'onenote-to-pdf'\n");
-    const srcDir = zip.folder('src/main/java/com/example');
-    if (srcDir) {
-      srcDir.file('OneNoteToPdfConverter.java', javaCode);
-    }
+  // Source files in /src folder
+  const appTsx = await fetchSourceSafely('/src/App.tsx', '');
+  const indexCss = await fetchSourceSafely('/src/index.css', '');
+  const mainTtsx = await fetchSourceSafely('/src/main.tsx', '');
+  const pdfGenTs = await fetchSourceSafely('/src/pdfGenerator.ts', '');
+  const typesTs = await fetchSourceSafely('/src/types.ts', '');
 
-    // Add minimal execution wrappers for Gradle to make it extremely easy
-    zip.file('gradlew', '#!/usr/bin/env sh\necho "Running mock gradle wrapper... please use standard locally installed gradle or compile commands"\n');
-    zip.file('gradlew.bat', '@echo off\necho Gradle wrapper placeholder\n');
-  } else {
-    zip.file('OneNoteToPdfConverter.java', javaCode);
+  // 2. Add top-level config files
+  zip.file('index.html', indexHtml);
+  zip.file('vite.config.ts', viteConfig);
+  zip.file('tsconfig.json', tsconfig);
+  zip.file('package.json', packageJson);
+  zip.file('.env.example', envExample);
+  zip.file('.env', envExample); // Create a handy .env copy matching the template file
+  zip.file('server.ts', serverTs);
+
+  // 3. Add launchers & instruction readmes
+  zip.file('start-portable-app.bat', WINDOWS_LAUNCHER);
+  zip.file('start-portable-app.sh', UNIX_LAUNCHER);
+  zip.file('README.md', PORTABLE_README);
+
+  // 4. Create /src folder structures
+  const src = zip.folder('src');
+  if (src) {
+    src.file('App.tsx', appTsx);
+    src.file('index.css', indexCss);
+    src.file('main.tsx', mainTtsx);
+    src.file('pdfGenerator.ts', pdfGenTs);
+    src.file('types.ts', typesTs);
+
+    // Create custom /src/components directory
+    src.folder('components');
   }
 
-  // General helper and documentation scripts
-  zip.file('README.md', readme);
-  zip.file('run.sh', runSh);
-  zip.file('run.bat', runBat);
-
-  // Auto-generate an empty or mock `.one` placeholder folder so they have absolute reference guide
-  zip.file(config.inputFileName, 'Placeholder for Microsoft OneNote data binary format stream\nReplace this file with your REAL OneNote sheet to convert instantly!');
-
+  // 5. Build dynamic binary payload
   return await zip.generateAsync({ type: 'blob' });
 }

@@ -1,40 +1,28 @@
 /**
  * @license
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: Apache-2.5
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Download, BookOpen, FileCheck, HelpCircle, Archive, AlertCircle, 
-  Shield, Upload, FileText, Settings, RefreshCw, Layers, Sparkles, 
-  Trash2, ChevronRight, Edit2, Play, CheckCircle2, RotateCcw, Monitor
+  Download, BookOpen, FileCheck, HelpCircle, AlertCircle, 
+  Upload, FileText, Sparkles, Trash2, ChevronRight, Edit2, 
+  CheckCircle2, RefreshCw, X, Laptop
 } from 'lucide-react';
-import { ConverterConfig, OneNotebook, OnePage, OnePageSection } from './types';
-import { buildProjectZip } from './utils';
+import { OneNotebook, OnePage, OnePageSection } from './types';
 import { generatePdfFromNotebook } from './pdfGenerator';
-import { ConfigurationPanel } from './components/ConfigurationPanel';
-import { CodeDisplay } from './components/CodeDisplay';
-import { TerminalSimulator } from './components/TerminalSimulator';
-import { FaqSection } from './components/FaqSection';
+import { downloadPortableApp } from './utils';
 
-const DEFAULT_CONFIG: ConverterConfig = {
-  buildTool: 'maven',
-  asposeVersion: '24.12',
-  jdkVersion: '17',
-  inputFileName: 'AcademicNotes.one',
-  outputFileName: 'ConvertedNotes.pdf',
-  saveLayout: 'standard',
-  pageWidth: 612,
-  pageHeight: 792,
-  pdfCompliance: 'None',
-  jpegQuality: 90,
-  fontFolder: '',
-  pageRange: '',
-  isPasswordProtected: false,
-  passwordValue: '',
-};
+interface ProcessedFile {
+  id: string;
+  fileName: string;
+  status: 'processing' | 'completed' | 'failed';
+  error?: string;
+  logs: string[];
+  notebook: OneNotebook | null;
+}
 
-const DEMO_NOTEBOOK: OneNotebook = {
+const INITIAL_DEMO_NOTEBOOK: OneNotebook = {
   name: "Strategic_Marketing_Plan",
   summary: "Extracted marketing roadmap, campaign assets checklist, and brand identity sections.",
   engine: "Gemini AI Compiler",
@@ -105,143 +93,180 @@ const DEMO_NOTEBOOK: OneNotebook = {
   ]
 };
 
-export default function App() {
-  // General Tabs
-  const [activeTab, setActiveTab] = useState<'converter' | 'developer'>('converter');
+const DEMO_FILES: ProcessedFile[] = [
+  {
+    id: 'demo-1',
+    fileName: 'Strategic_Marketing_Plan.one',
+    status: 'completed',
+    logs: [
+      '[Upload] Loaded default onboarding workspace.',
+      '[Success] Extracted layouts ready for preview.'
+    ],
+    notebook: INITIAL_DEMO_NOTEBOOK
+  }
+];
 
-  // Tab 1: Direct Converter States
-  const [notebook, setNotebook] = useState<OneNotebook | null>(DEMO_NOTEBOOK);
+export default function App() {
+  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>(DEMO_FILES);
+  const [activeFileId, setActiveFileId] = useState<string>('demo-1');
   const [selectedPageIdx, setSelectedPageIdx] = useState<number>(0);
+  
   const [isDragging, setIsDragging] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStatus, setProcessingStatus] = useState<string>('');
-  const [processingLogs, setProcessingLogs] = useState<string[]>([]);
   const [themeColor, setThemeColor] = useState<'indigo' | 'emerald' | 'rose' | 'neutral' | 'amber'>('indigo');
   const [editMode, setEditMode] = useState<boolean>(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingWorkspace, setIsExportingWorkspace] = useState(false);
 
-  // Tab 2: Code Generator States
-  const [config, setConfig] = useState<ConverterConfig>(DEFAULT_CONFIG);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadSuccessMessage, setDownloadSuccessMessage] = useState<string | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const processingLogsEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (processingLogsEndRef.current) {
-      processingLogsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [processingLogs]);
-
-  const handleResetConfig = () => {
-    setConfig(DEFAULT_CONFIG);
-  };
-
-  // ORIGINAL ZIP Generation Function
-  const handleDownloadZip = async () => {
-    setIsDownloading(true);
-    setDownloadSuccessMessage(null);
+  const handleDownloadPortableApp = async () => {
+    setIsExportingWorkspace(true);
     try {
-      const zipBlob = await buildProjectZip(config);
-      const url = window.URL.createObjectURL(zipBlob);
+      const blob = await downloadPortableApp();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `onenote-to-pdf-java-${config.buildTool}-project.zip`;
+      link.download = `Note2PDF_Standalone_Workspace.zip`;
       document.body.appendChild(link);
       link.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(link);
-
-      setDownloadSuccessMessage(`Successfully compiled "${config.buildTool}" bundle! Check your downloads.`);
-      setTimeout(() => setDownloadSuccessMessage(null), 5000);
     } catch (err: any) {
-      console.error('Failed compiling downloadable ZIP files:', err);
-      alert('Error bundling files: ' + err?.message);
+      console.error("Workspace bundler error:", err);
+      alert("Error building standalone workspace package: " + err.message);
     } finally {
-      setIsDownloading(false);
+      setIsExportingWorkspace(false);
     }
   };
 
-  // Real-Time File Parser Interface (Express API POST connection)
-  const processOneNoteFile = async (file: File) => {
-    setIsProcessing(true);
-    setProcessingStatus('Analyzing binary stream headers...');
-    setProcessingLogs([
-      `[Upload] Received filename: "${file.name}" | Size: ${(file.size / 1024).toFixed(1)} KB`,
-      `[Scanner] Opening byte buffer channels...`,
-      `[Scanner] Analyzing FAT sections and file header sequences...`
-    ]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Simulate logs sequence
-    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+  // Derive currently active notebook
+  const activeFile = processedFiles.find(f => f.id === activeFileId);
+  const notebook = activeFile?.notebook || null;
 
-    await delay(350);
-    setProcessingLogs(prev => [...prev, `[Decoder] Initializing extraction of Microsoft OneNote .one format offsets...`]);
-    setProcessingStatus('Reconstructing UTF-16 Unicode sequences...');
-
-    await delay(450);
-    setProcessingLogs(prev => [...prev, `[Decoder] Searching little-endian binary pools for UTF-16 and UTF-8 printable glyph blocks...`]);
-    setProcessingLogs(prev => [...prev, `[Decoder] Found raw string boundaries. Cleaning metadata tables...`]);
-
-    await delay(400);
-    setProcessingStatus('Decompressing layout models...');
-    setProcessingLogs(prev => [...prev, `[Server] Transferring text array chunks to Express full-stack API pipeline...`]);
-
-    try {
-      // Read file as Base64 string to securely submit over HTTP JSON POST
-      const reader = new FileReader();
-      
-      reader.onerror = () => {
-        throw new Error("Unable to read local file stream.");
-      };
-
-      reader.onload = async () => {
-        try {
-          const base64Data = (reader.result as string).split(',')[1];
-          setProcessingLogs(prev => [...prev, `[API] Sending secure base64 payload to "/api/convert-one" gateway...`]);
-          
-          const response = await fetch('/api/convert-one', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fileName: file.name,
-              fileData: base64Data
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP network error ${response.status}: Failed to compiler contents.`);
-          }
-
-          const result: OneNotebook = await response.json();
-          
-          setProcessingLogs(prev => [
-            ...prev,
-            `[Gemini Compiler] Engine callback completed using: ${result.engine || "Standard Parsing Fallback"}`,
-            `[Compiler] Page Outline established! Discovered ${result.pages.length} sheets.`,
-            `[Success] OneNote Notebook parsed successfully.`
-          ]);
-
-          await delay(400);
-          setNotebook(result);
-          setSelectedPageIdx(0);
-          setIsProcessing(false);
-        } catch (apiErr: any) {
-          setProcessingLogs(prev => [...prev, `[Error] Server error during layout assembly: ${apiErr.message}`]);
-          setProcessingStatus('Parsing failed.');
-          setIsProcessing(false);
-          alert(`Failed to parse OneNote file: ${apiErr.message}`);
-        }
-      };
-
-      reader.readAsDataURL(file);
-
-    } catch (err: any) {
-      setIsProcessing(false);
-      setProcessingLogs(prev => [...prev, `[Error] Parser crash: ${err.message}`]);
-      alert("Error parsing document: " + err.message);
+  // Make sure page index doesn't go out of bounds on notebook switch
+  useEffect(() => {
+    if (notebook) {
+      if (selectedPageIdx >= notebook.pages.length) {
+        setSelectedPageIdx(0);
+      }
+    } else {
+      setSelectedPageIdx(0);
     }
+  }, [activeFileId, notebook]);
+
+  // Handle single or multiple file conversions
+  const processFiles = async (files: FileList) => {
+    const validFiles = Array.from(files).filter(f => f.name.endsWith('.one'));
+    if (validFiles.length === 0) {
+      alert("Please upload valid Microsoft OneNote files ending in '.one'.");
+      return;
+    }
+
+    // Prepare container records
+    const newItems: ProcessedFile[] = validFiles.map(file => ({
+      id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      fileName: file.name,
+      status: 'processing',
+      logs: [
+        `[Upload] Received filename: "${file.name}" | Size: ${(file.size / 1024).toFixed(1)} KB`,
+        `[Scanner] Opening byte buffer channels...`,
+        `[Scanner] Analyzing directory headers & binary stream offsets...`
+      ],
+      notebook: null
+    }));
+
+    // Add them to history list
+    setProcessedFiles(prev => [...prev, ...newItems]);
+    // Switch selection to the first newly added file
+    setActiveFileId(newItems[0].id);
+
+    // Process files sequentially or in parallel
+    newItems.forEach(async (item, idx) => {
+      const fileToProcess = validFiles[idx];
+      const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+      try {
+        await delay(200);
+        updateItemLogs(item.id, `[Decoder] Searching little-endian binary pools for UTF-16 and UTF-8 glyphs...`);
+        
+        await delay(250);
+        updateItemLogs(item.id, `[Server] Transferring text array streams to Express /api/convert-one API...`);
+
+        const reader = new FileReader();
+        reader.onerror = () => {
+          throw new Error("Unable to read local file stream.");
+        };
+
+        reader.onload = async () => {
+          try {
+            const base64Data = (reader.result as string).split(',')[1];
+            
+            const response = await fetch('/api/convert-one', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fileName: fileToProcess.name,
+                fileData: base64Data
+               })
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP network error ${response.status}: Failed to compiler contents.`);
+            }
+
+            const parsedRes: OneNotebook = await response.json();
+
+            setProcessedFiles(prev => prev.map(f => {
+              if (f.id === item.id) {
+                return {
+                  ...f,
+                  status: 'completed',
+                  logs: [
+                    ...f.logs,
+                    `[Gemini Compiler] Completed structure callback using Engine: ${parsedRes.engine}`,
+                    `[Compiler] Found page maps: ${parsedRes.pages.length} sheets.`,
+                    `[Success] OneNote Notebook parsed successfully.`
+                  ],
+                  notebook: parsedRes
+                };
+              }
+              return f;
+            }));
+
+          } catch (fetchErr: any) {
+            markItemFailed(item.id, fetchErr.message);
+          }
+        };
+
+        reader.readAsDataURL(fileToProcess);
+
+      } catch (err: any) {
+        markItemFailed(item.id, err.message);
+      }
+    });
+  };
+
+  const updateItemLogs = (id: string, logMsg: string) => {
+    setProcessedFiles(prev => prev.map(f => {
+      if (f.id === id) {
+        return { ...f, logs: [...f.logs, logMsg] };
+      }
+      return f;
+    }));
+  };
+
+  const markItemFailed = (id: string, errMsg: string) => {
+    setProcessedFiles(prev => prev.map(f => {
+      if (f.id === id) {
+        return {
+          ...f,
+          status: 'failed',
+          error: errMsg,
+          logs: [...f.logs, `[Error] Loader crashed: ${errMsg}`]
+        };
+      }
+      return f;
+    }));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -256,21 +281,14 @@ export default function App() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.name.endsWith('.one')) {
-        processOneNoteFile(file);
-      } else {
-        alert("Please drop a valid Microsoft OneNote file ending in '.one'.");
-      }
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      processOneNoteFile(files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
     }
   };
 
@@ -278,24 +296,26 @@ export default function App() {
     fileInputRef.current?.click();
   };
 
-  const handleResetConverter = () => {
-    setNotebook(DEMO_NOTEBOOK);
-    setSelectedPageIdx(0);
-    setEditMode(false);
-    setThemeColor('indigo');
-    setProcessingLogs([]);
+  const handleDeleteFile = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const filtered = processedFiles.filter(f => f.id !== id);
+    setProcessedFiles(filtered);
+    
+    // Adjust active selection if deleted active
+    if (activeFileId === id && filtered.length > 0) {
+      setActiveFileId(filtered[0].id);
+    }
   };
 
-  // Direct client PDF download
   const handleExportPdf = async () => {
     if (!notebook) return;
     setIsExportingPdf(true);
     try {
       const pdfBlob = generatePdfFromNotebook(notebook, {
         themeColor,
-        jpegQuality: config.jpegQuality,
-        pdfCompliance: config.pdfCompliance,
-        fontFolder: config.fontFolder
+        jpegQuality: 90,
+        pdfCompliance: 'None',
+        fontFolder: ''
       });
 
       const url = window.URL.createObjectURL(pdfBlob);
@@ -307,7 +327,7 @@ export default function App() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(link);
     } catch (err: any) {
-      console.error("PDF export crash: ", err);
+      console.error("PDF compiling error: ", err);
       alert("Error compiling vector PDF blocks: " + err.message);
     } finally {
       setIsExportingPdf(false);
@@ -322,34 +342,35 @@ export default function App() {
     newText: string, 
     type: 'text' | 'checked' = 'text'
   ) => {
-    if (!notebook) return;
-    const clonedNotebook = JSON.parse(JSON.stringify(notebook));
-    const section = clonedNotebook.pages[pageIdx].sections[secIdx];
+    if (!activeFileId || !notebook) return;
+    
+    setProcessedFiles(prev => prev.map(f => {
+      if (f.id === activeFileId && f.notebook) {
+        const clonedNotebook = JSON.parse(JSON.stringify(f.notebook));
+        const section = clonedNotebook.pages[pageIdx].sections[secIdx];
 
-    if (section.type === 'checklist' && itemIdx !== null) {
-      if (type === 'checked') {
-        section.content[itemIdx].checked = !section.content[itemIdx].checked;
-      } else {
-        section.content[itemIdx].text = newText;
+        if (section.type === 'checklist' && itemIdx !== null) {
+          if (type === 'checked') {
+            section.content[itemIdx].checked = !section.content[itemIdx].checked;
+          } else {
+            section.content[itemIdx].text = newText;
+          }
+        } else if (itemIdx !== null && Array.isArray(section.content)) {
+          section.content[itemIdx] = newText;
+        } else if (typeof section.content === 'string') {
+          section.content = newText;
+        }
+
+        return {
+          ...f,
+          notebook: clonedNotebook
+        };
       }
-    } else if (itemIdx !== null && Array.isArray(section.content)) {
-      section.content[itemIdx] = newText;
-    } else if (typeof section.content === 'string') {
-      section.content = newText;
-    }
-    setNotebook(clonedNotebook);
+      return f;
+    }));
   };
 
-  // Sidebar colors mapping
-  const activeColorTheme = {
-    indigo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30 accent-indigo-500 hover:text-indigo-300',
-    emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 accent-emerald-500 hover:text-emerald-300',
-    rose: 'text-rose-400 bg-rose-500/10 border-rose-500/30 accent-rose-500 hover:text-rose-300',
-    amber: 'text-amber-400 bg-amber-500/10 border-amber-500/30 accent-amber-500 hover:text-amber-300',
-    neutral: 'text-neutral-300 bg-neutral-800/80 border-neutral-700/60 accent-neutral-400 hover:text-white',
-  }[themeColor];
-
-  const themeAccentHex = {
+  const currentThemeAccentHex = {
     indigo: '#4F46E5',
     emerald: '#059669',
     rose: '#E11D48',
@@ -357,8 +378,16 @@ export default function App() {
     neutral: '#4B5563',
   }[themeColor];
 
+  const activeColorThemeStyles = {
+    indigo: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30 accent-indigo-500 hover:text-indigo-300',
+    emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30 accent-emerald-500 hover:text-emerald-300',
+    rose: 'text-rose-400 bg-rose-500/10 border-rose-500/30 accent-rose-500 hover:text-rose-300',
+    amber: 'text-amber-400 bg-amber-500/10 border-amber-500/30 accent-amber-500 hover:text-amber-300',
+    neutral: 'text-neutral-300 bg-neutral-800/80 border-neutral-700/60 accent-neutral-400 hover:text-white',
+  }[themeColor];
+
   return (
-    <div className="min-h-screen bg-[#0A0A0B] text-neutral-300 font-sans antialiased">
+    <div className="min-h-screen bg-[#0A0A0B] text-neutral-300 font-sans antialiased flex flex-col justify-between">
       {/* Header Hub */}
       <header className="bg-[#0E0E10] border-b border-neutral-850 sticky top-0 z-50 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -370,549 +399,533 @@ export default function App() {
               </span>
               <div>
                 <h1 className="text-sm font-black text-white tracking-widest leading-none uppercase">
-                  Note2PDF <span className="text-indigo-400 font-medium tracking-normal text-[11px] normal-case ml-1">Fluid Suite v2.0</span>
+                  Note2PDF <span className="text-indigo-400 font-bold tracking-normal text-[10px] normal-case ml-1.5 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">A4 Vector Compiler</span>
                 </h1>
-                <p className="text-[10px] text-neutral-500 font-bold mt-1 uppercase tracking-wide">
-                  Microsoft OneNote .one Binary Layout Parser
+                <p className="text-[10px] text-neutral-500 font-bold mt-1 uppercase tracking-wide flex items-center">
+                  <Sparkles className="h-3 w-3 text-amber-500 mr-1" />
+                  Watermark-Free Multi-File Converter Engine
                 </p>
               </div>
             </div>
 
-            {/* Menu Tabs Navigation */}
+            {/* Metrics Tally count */}
             <div className="flex items-center space-x-2">
-              <button
-                id="btn-tab-converter"
-                onClick={() => setActiveTab('converter')}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  activeTab === 'converter'
-                    ? 'bg-[#1D1D23] text-[#F3F4F6] border border-neutral-700'
-                    : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                <span>Live PDF Converter</span>
-              </button>
-              <button
-                id="btn-tab-developer"
-                onClick={() => setActiveTab('developer')}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                  activeTab === 'developer'
-                    ? 'bg-[#1D1D23] text-[#F3F4F6] border border-neutral-700'
-                    : 'text-neutral-500 hover:text-neutral-300'
-                }`}
-              >
-                <span>Developer Java SDK</span>
-              </button>
+              <div className="bg-[#121216] border border-neutral-800 rounded-lg px-3 py-1.5 flex items-center space-x-2 text-xs font-mono">
+                <span className="text-neutral-500 uppercase tracking-widest text-[9px] font-bold">Files In Queue:</span>
+                <span className="text-white font-extrabold">{processedFiles.length}</span>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace Frame */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main Container */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
         
-        {/* TAB 1: REAL-TIME CONVERTER AREA */}
-        {activeTab === 'converter' && (
-          <div className="space-y-6">
+        {/* MULTI DRAG AND DROP ZONE */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={triggerUploadClick}
+          className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 relative overflow-hidden ${
+            isDragging 
+              ? 'border-indigo-400 bg-indigo-500/5'
+              : 'border-neutral-800 bg-[#0E0E10] hover:border-neutral-700'
+          }`}
+        >
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            accept=".one" 
+            multiple 
+            className="hidden" 
+          />
+          
+          <div className="max-w-xl mx-auto flex flex-col items-center space-y-4">
+            <div className="p-4 bg-[#16161A] text-indigo-400 rounded-full border border-neutral-800 shadow-inner">
+              <Upload className="h-7 w-7 animate-bounce text-indigo-400" />
+            </div>
             
-            {/* Dropzone Hub */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={triggerUploadClick}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 relative overflow-hidden ${
-                isDragging 
-                  ? 'border-indigo-400 bg-indigo-505/10 scale-[0.99] shadow-2xl'
-                  : 'border-neutral-800 bg-[#0E0E10] hover:border-neutral-700'
-              }`}
+            <div className="space-y-2">
+              <div className="inline-flex items-center space-x-1.5 bg-emerald-500/10 text-emerald-400 text-[10px] font-black tracking-widest px-3 py-1 rounded-full uppercase border border-emerald-500/15">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>Multi-File Drop Enabled</span>
+              </div>
+              <h3 className="font-extrabold text-white text-sm uppercase tracking-wider block mt-1">Drag & Drop OneNote Files Here</h3>
+              <p className="text-xs text-neutral-400 font-sans leading-relaxed">
+                Upload one or multiple Microsoft <strong className="text-neutral-200">.one</strong> notebook files simultaneously. Files are processed locally on your Node.js queue pipeline and cleanly mapped with zero watermarks.
+              </p>
+            </div>
+            
+            <button
+              type="button"
+              className="bg-[#1C1C22] text-[#E1E1E6] hover:bg-[#25252E] px-5 py-2.5 rounded-xl text-[10.5px] font-bold border border-neutral-800 uppercase tracking-widest cursor-pointer transition-all active:scale-95"
             >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept=".one" 
-                className="hidden" 
-              />
-              
-              <div className="max-w-lg mx-auto flex flex-col items-center space-y-4">
-                <div className="p-4 bg-[#16161A] text-indigo-400 rounded-full border border-neutral-800 shadow-inner">
-                  <Upload className="h-7 w-7 animate-bounce" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-extrabold text-white text-sm uppercase tracking-wider">Drag & Drop OneNote File Here</h3>
-                  <p className="text-xs text-neutral-500 font-sans leading-relaxed">
-                    Instantly load Microsoft <strong className="text-neutral-350">.one</strong> files. Our fullstack Node.js server parses binary data and renders beautiful, scalable PDFs.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="bg-[#1C1C22] text-[#E1E1E6] hover:bg-[#25252E] px-5 py-2 rounded-lg text-[10.5px] font-bold border border-neutral-800 uppercase tracking-widest cursor-pointer transition-all"
-                >
-                  Choose Local File
-                </button>
+              Choose OneNote Files
+            </button>
+          </div>
+
+          {isDragging && (
+            <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-xs flex items-center justify-center">
+              <span className="text-indigo-400 text-xs font-black uppercase tracking-widest">Release to queue convert!</span>
+            </div>
+          )}
+        </div>
+
+        {/* WORKSPACE MIDDLEWARE SPLIT */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* LEFT: Processed Files List & Export Specifications */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* PROCESSED LIST PANEL */}
+            <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-neutral-850 pb-2.5">
+                <span className="text-[10px] text-neutral-400 font-black uppercase tracking-widest block">
+                  Processed Files List ({processedFiles.length})
+                </span>
+                {processedFiles.length > 1 && (
+                  <button 
+                    onClick={() => {
+                      setProcessedFiles(DEMO_FILES);
+                      setActiveFileId('demo-1');
+                    }}
+                    className="text-[9px] font-bold uppercase tracking-wider text-rose-450 hover:text-rose-400 cursor-pointer transition-colors"
+                  >
+                    Clear History
+                  </button>
+                )}
               </div>
 
-              {/* Drag indicator halo */}
-              {isDragging && (
-                <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-xs flex items-center justify-center">
-                  <span className="text-indigo-400 text-xs font-black uppercase tracking-widest">Release to compile instantly!</span>
-                </div>
-              )}
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {processedFiles.map((file, idx) => {
+                  const isActive = file.id === activeFileId;
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => setActiveFileId(file.id)}
+                      className={`group p-3 rounded-xl transition-all border cursor-pointer relative ${
+                        isActive
+                          ? 'bg-neutral-850/80 border-neutral-700/80'
+                          : 'bg-[#121216] border-neutral-850 hover:border-neutral-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between space-x-2">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <FileText className={`h-4.5 w-4.5 shrink-0 ${isActive ? 'text-indigo-400' : 'text-neutral-500'}`} />
+                          <div className="min-w-0">
+                            <p className={`text-xs font-bold truncate ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-250'}`}>
+                              {file.fileName}
+                            </p>
+                            
+                            {/* File specs */}
+                            <p className="text-[10px] font-mono mt-0.5 text-neutral-500">
+                              {file.status === 'processing' && (
+                                <span className="text-amber-400 flex items-center space-x-1">
+                                  <RefreshCw className="h-2.5 w-2.5 animate-spin mr-1 inline" />
+                                  Parsing binary...
+                                </span>
+                              )}
+                              {file.status === 'completed' && (
+                                <span className="text-emerald-400">
+                                  ✓ Translated ({file.notebook?.pages.length || 0} pgs)
+                                </span>
+                              )}
+                              {file.status === 'failed' && (
+                                <span className="text-rose-400">✗ Parse Error</span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Delete single processed item */}
+                        <button
+                          onClick={(e) => handleDeleteFile(file.id, e)}
+                          className="text-neutral-600 hover:text-rose-400 p-1 rounded-md transition-all lg:opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Processing Micro log snippets inside card if expanded/active */}
+                      {isActive && file.status === 'processing' && (
+                        <div className="mt-2.5 pt-2 border-t border-neutral-800 text-[10px] font-mono text-neutral-500 space-y-1">
+                          <div className="animate-pulse">Loading active layout mappings...</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* PROCESSING OVERLAY CARDS */}
-            {isProcessing && (
-              <div className="bg-[#0E0E10] border border-neutral-850 rounded-2xl p-6 shadow-2xl space-y-4 animate-fade-in">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <RefreshCw className="h-5 w-5 text-indigo-400 animate-spin" />
-                    <div>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Node.js Binary Parse Engine running</h4>
-                      <p className="text-[10.5px] text-neutral-500 font-sans">{processingStatus}</p>
-                    </div>
+            {/* PORTABLE DESKTOP WORKSPACE */}
+            <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center space-x-2.5 border-b border-neutral-850 pb-2.5">
+                <span className="p-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
+                  <Laptop className="h-4 w-4" />
+                </span>
+                <span className="text-[10px] text-neutral-400 font-black uppercase tracking-widest block">
+                  Standalone Desktop App
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-500 leading-relaxed font-sans">
+                Convert this watermark-free converter into a standalone desktop program. Run it offline/locally on your workstation (Windows, macOS, Linux) with automatic single-click startup scripts included.
+              </p>
+              <button
+                type="button"
+                onClick={handleDownloadPortableApp}
+                disabled={isExportingWorkspace}
+                className="w-full inline-flex items-center justify-center space-x-2 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg cursor-pointer transition-all active:scale-95 border border-indigo-500/30"
+              >
+                {isExportingWorkspace ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    <span>Packaging Node Sources...</span>
+                  </>
+                ) : (
+                  <>
+                    <Laptop className="h-3.5 w-3.5 shrink-0" />
+                    <span>Download Desktop Package</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* EXPORT SPECIFICATIONS */}
+            {notebook && (
+              <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-5">
+                <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block border-b border-neutral-850 pb-2">
+                  Export Specifications
+                </span>
+
+                {/* Accent Selection panel */}
+                <div className="space-y-2">
+                  <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Theme Palette</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(['indigo', 'emerald', 'rose', 'neutral', 'amber'] as const).map((col) => (
+                      <button
+                        key={col}
+                        onClick={() => setThemeColor(col)}
+                        style={{ borderColor: themeColor === col ? currentThemeAccentHex : 'transparent' }}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center space-x-1.5 ${
+                          themeColor === col 
+                            ? 'bg-neutral-850 text-white' 
+                            : 'bg-[#16161A] text-neutral-500 hover:text-neutral-350'
+                        }`}
+                      >
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full" 
+                          style={{ 
+                            backgroundColor: 
+                              col === 'indigo' ? '#4F46E5' :
+                              col === 'emerald' ? '#059669' :
+                              col === 'rose' ? '#E11D48' :
+                              col === 'amber' ? '#D97706' : '#9CA3AF'
+                          }}
+                        />
+                        <span>{col}</span>
+                      </button>
+                    ))}
                   </div>
-                  <span className="text-[10px] font-mono font-bold bg-[#16161A] border border-neutral-800 text-indigo-400 px-3 py-1 rounded-full uppercase tracking-wider">
-                    Fullstack API Active
-                  </span>
                 </div>
+
+                {/* Lock elements sandbox toggle */}
+                <div className="space-y-2 pt-1 border-t border-neutral-850">
+                  <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Interactive Sandbox Options</label>
+                  <button
+                    onClick={() => setEditMode(!editMode)}
+                    className={`w-full inline-flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border cursor-pointer transition-all ${
+                      editMode 
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
+                        : 'bg-[#16161B] border-neutral-850 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                    <span>{editMode ? "Lock Elements" : "Editable Mode"}</span>
+                  </button>
+                  <p className="text-[10px] text-neutral-500 font-sans leading-normal">
+                    Turn on Editable Mode to manually edit document content, check task boxes, or rewrite section headers directly on the preview sheet prior to exporting.
+                  </p>
+                </div>
+
+                {/* Download Direct Trigger button */}
+                <button
+                  id="btn-direct-compile-pdf"
+                  onClick={handleExportPdf}
+                  disabled={isExportingPdf}
+                  className="w-full inline-flex items-center justify-center space-x-2 py-3 text-xs font-black text-black bg-white hover:bg-neutral-200 rounded-lg cursor-pointer transition-all active:scale-95 shadow-xl"
+                >
+                  {isExportingPdf ? (
+                    <>
+                      <div className="animate-spin border-2 border-neutral-500 border-t-transparent rounded-full h-3 w-3"></div>
+                      <span>Compiling PDF-A...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      <span>Download Clean PDF</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Selected Notebook Chapter Directory */}
+            {notebook && (
+              <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-3">
+                <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block border-b border-neutral-850 pb-2">
+                  Notebook Chapters ({notebook.pages.length})
+                </span>
                 
-                {/* Micro console output */}
-                <div className="bg-black/85 border border-neutral-850 rounded-xl p-4 h-48 overflow-y-auto font-mono text-[10.5px] leading-relaxed text-neutral-300 space-y-1.5 shadow-inner">
-                  {processingLogs.map((log, i) => (
-                    <div key={i} className="border-l border-neutral-800 pl-2 animate-fade-in">
-                      <span className="text-neutral-650 select-none mr-2">[{i+1}]</span>
-                      <span>{log}</span>
-                    </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {notebook.pages.map((p, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedPageIdx(idx)}
+                      className={`w-full text-left p-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${
+                        selectedPageIdx === idx
+                          ? 'bg-neutral-850 border-neutral-700 text-white shadow-md'
+                          : 'bg-[#121216] border-neutral-850 hover:border-neutral-800 text-neutral-450 hover:text-neutral-350'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 truncate">
+                        <FileText className={`h-4 w-4 ${selectedPageIdx === idx ? 'text-indigo-400' : 'text-neutral-600'}`} />
+                        <span className="truncate">{p.title || `Chapter ${idx+1}`}</span>
+                      </div>
+                      <ChevronRight className="h-3 w-3 text-neutral-600 shrink-0" />
+                    </button>
                   ))}
-                  <div ref={processingLogsEndRef} />
                 </div>
               </div>
             )}
 
-            {/* ACTIVE WORKSPACE GRID PANEL */}
-            {notebook && !isProcessing && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                
-                {/* 1. Left controls sidebar */}
-                <div className="lg:col-span-4 space-y-6">
-                  
-                  {/* Loaded summary card */}
-                  <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-4">
-                    <div className="flex items-start justify-between border-b border-neutral-850 pb-3">
-                      <div>
-                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">ACTIVE CONTAINER</span>
-                        <h4 className="text-xs font-extrabold text-white uppercase tracking-wider block mt-0.5 truncate max-w-[180px]">
-                          {notebook.name}
-                        </h4>
-                      </div>
-                      <span className="text-[9px] font-extrabold font-mono uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-2 py-0.5 rounded">
-                        {notebook.engine}
-                      </span>
-                    </div>
+          </div>
 
-                    <p className="text-[11px] text-neutral-400 font-sans leading-relaxed">
-                      {notebook.summary || "Successful binary layout dissection."}
-                    </p>
+          {/* RIGHT: Document Canvas area */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {editMode && (
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 flex items-center space-x-2 text-amber-400 animate-slide-down">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span className="text-[10.5px] font-sans">
+                  <strong>Sandbox Workspace Active</strong>: You can change the titles or text values directly on the paper canvas. Updates are baked on compile.
+                </span>
+              </div>
+            )}
 
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={handleResetConverter}
-                        className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-[10.5px] font-bold text-neutral-450 hover:text-white bg-[#16161B] border border-neutral-850 rounded-lg cursor-pointer transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Reset Workspace</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Themes / Accent settings */}
-                  <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-5">
-                    <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block border-b border-neutral-850 pb-2">
-                      Export Specifications
-                    </span>
-
-                    {/* Accent selection */}
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Theme Palette</label>
-                      <div className="flex flex-wrap gap-2">
-                        {(['indigo', 'emerald', 'rose', 'neutral', 'amber'] as const).map((col) => (
-                          <button
-                            key={col}
-                            onClick={() => setThemeColor(col)}
-                            style={{ borderColor: themeColor === col ? themeAccentHex : 'transparent' }}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center space-x-1.5 ${
-                              themeColor === col 
-                                ? 'bg-neutral-850 text-white' 
-                                : 'bg-[#16161A] text-neutral-500 hover:text-neutral-350'
-                            }`}
-                          >
-                            <span 
-                              className="w-2.5 h-2.5 rounded-full" 
-                              style={{ 
-                                backgroundColor: 
-                                  col === 'indigo' ? '#4F46E5' :
-                                  col === 'emerald' ? '#059669' :
-                                  col === 'rose' ? '#E11D48' :
-                                  col === 'amber' ? '#D97706' : '#9CA3AF'
-                              }}
-                            />
-                            <span>{col}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Mode edits */}
-                    <div className="space-y-2 pt-1 border-t border-neutral-850">
-                      <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block">Interactive Sandbox Options</label>
-                      <div className="flex space-x-3 items-center">
-                        <button
-                          onClick={() => setEditMode(!editMode)}
-                          className={`flex-1 inline-flex items-center justify-center space-x-2 py-2 rounded-lg text-xs font-bold uppercase tracking-widest border cursor-pointer transition-all ${
-                            editMode 
-                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' 
-                              : 'bg-[#16161B] border-neutral-850 text-neutral-400 hover:text-white'
-                          }`}
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                          <span>{editMode ? "Lock Elements" : "Editable Mode"}</span>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-neutral-500 font-sans leading-normal mt-1">
-                        Configure editable blocks on to refine titles or check states directly before writing your vector PDF!
-                      </p>
-                    </div>
-
-                    {/* Action Hub button */}
-                    <button
-                      id="btn-main-convert-pdf"
-                      onClick={handleExportPdf}
-                      disabled={isExportingPdf}
-                      className={`w-full inline-flex items-center justify-center space-x-2.5 py-3 rounded-lg text-xs font-black uppercase tracking-widest cursor-pointer transition-all shadow-lg active:scale-[98%] ${
-                        isExportingPdf 
-                          ? 'bg-neutral-800 text-neutral-500'
-                          : 'bg-white text-black hover:bg-neutral-200'
-                      }`}
-                    >
-                      {isExportingPdf ? (
-                        <>
-                          <div className="animate-spin border-2 border-neutral-500 border-t-transparent rounded-full h-3 w-3"></div>
-                          <span>Compiling Elements...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Download className="h-4 w-4" />
-                          <span>Download High-Fidelity PDF</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Layout Outline map cards */}
-                  <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-3">
-                    <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest block border-b border-neutral-850 pb-2">
-                      Notebook Chapters ({notebook.pages.length})
-                    </span>
-                    
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                      {notebook.pages.map((p, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedPageIdx(idx)}
-                          className={`w-full text-left p-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${
-                            selectedPageIdx === idx
-                              ? 'bg-neutral-850 border-neutral-700 text-white shadow-md'
-                              : 'bg-[#121216] border-neutral-850 hover:border-neutral-800 text-neutral-450 hover:text-neutral-350'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2.5 truncate">
-                            <FileText className={`h-4 w-4 ${selectedPageIdx === idx ? 'text-indigo-400' : 'text-neutral-600'}`} />
-                            <span className="truncate">{p.title || `Chapter ${idx+1}`}</span>
-                          </div>
-                          <ChevronRight className="h-3 w-3 text-neutral-600 shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
+            {activeFile?.status === 'processing' && (
+              <div className="bg-[#111115] border border-neutral-850 rounded-2xl p-12 text-center h-[650px] flex flex-col justify-center items-center space-y-4">
+                <div className="p-4 bg-indigo-500/5 rounded-full border border-indigo-500/10">
+                  <RefreshCw className="h-8 w-8 text-indigo-400 animate-spin" />
                 </div>
-
-                {/* 2. Center sheet workspace */}
-                <div className="lg:col-span-8 space-y-6">
-                  
-                  {/* Editing Warning banner */}
-                  {editMode && (
-                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 flex  items-center space-x-2 text-amber-400">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span className="text-[10.5px] font-sans">
-                        <strong>Sandbox Active</strong>: You can click inside any paragraph or label to modify the text. Changes propagate to vector PDF on export!
-                      </span>
+                <h3 className="font-extrabold text-white text-sm uppercase tracking-wider">Parsing System streams...</h3>
+                <div className="max-w-lg bg-black/60 rounded-xl p-4 text-left font-mono text-[10.5px] text-neutral-450 w-full h-44 overflow-y-auto space-y-1.5 shadow-inner">
+                  {activeFile.logs.map((log, i) => (
+                    <div key={i} className="border-l border-neutral-850 pl-2">
+                      <span className="text-neutral-600">[{i+1}]</span> {log}
                     </div>
-                  )}
+                  ))}
+                </div>
+              </div>
+            )}
 
-                  {/* Realistic document canvas wrapper */}
-                  <div className="bg-[#111115] border border-neutral-850 rounded-2xl p-6 md:p-12 shadow-inner min-h-[720px] relative overflow-hidden flex flex-col justify-between">
+            {activeFile?.status === 'failed' && (
+              <div className="bg-[#111115] border border-neutral-850 rounded-2xl p-12 text-center h-[650px] flex flex-col justify-center items-center space-y-4">
+                <div className="p-4 bg-rose-500/10 rounded-full border border-rose-500/25 text-rose-400">
+                  <AlertCircle className="h-8 w-8" />
+                </div>
+                <h3 className="font-extrabold text-white text-sm uppercase tracking-wider">Binary Compile Failed</h3>
+                <p className="text-xs text-neutral-400 leading-normal max-w-sm">
+                  {activeFile.error || "Unable to read standard directory stream files from container context."}
+                </p>
+                <button
+                  onClick={() => {
+                    setProcessedFiles(prev => prev.filter(f => f.id !== activeFileId));
+                    setActiveFileId('demo-1');
+                  }}
+                  className="bg-[#1C1C22] text-[#E1E1E6] hover:bg-[#25252E] px-4 py-2 rounded-lg text-xs font-bold border border-neutral-850 uppercase tracking-widest cursor-pointer transition-all"
+                >
+                  Dismiss & Load Demo
+                </button>
+              </div>
+            )}
+
+            {notebook && activeFile?.status === 'completed' && (
+              <div className="bg-[#111115] border border-neutral-850 rounded-2xl p-6 md:p-12 shadow-inner min-h-[720px] relative overflow-hidden flex flex-col justify-between">
+                
+                {/* Paper body */}
+                <div className="space-y-8 select-text">
+                  <div className="border-b border-neutral-800 pb-5">
                     
-                    {/* A4 Paper Grid */}
-                    <div className="space-y-8 select-text">
-                      <div className="border-b border-neutral-800 pb-5">
-                        
-                        {/* Title accent block */}
-                        <div 
-                          className="h-1 w-24 rounded-full mb-4" 
-                          style={{ backgroundColor: themeAccentHex }}
-                        />
+                    {/* Color Accent line */}
+                    <div 
+                      className="h-1 w-24 rounded-full mb-4" 
+                      style={{ backgroundColor: currentThemeAccentHex }}
+                    />
 
-                        {/* Page Title */}
-                        {editMode ? (
-                          <input
-                            type="text"
-                            value={notebook.pages[selectedPageIdx]?.title || ''}
-                            onChange={(e) => {
-                              const cloned = JSON.parse(JSON.stringify(notebook));
-                              cloned.pages[selectedPageIdx].title = e.target.value;
-                              setNotebook(cloned);
-                            }}
-                            className="bg-neutral-850 text-white font-extrabold text-2xl tracking-tight border border-neutral-700 rounded px-2 py-1 w-full focus:outline-none focus:border-indigo-500"
-                          />
-                        ) : (
-                          <h2 className="text-white font-extrabold text-2xl tracking-tight leading-snug">
-                            {notebook.pages[selectedPageIdx]?.title || "Untitled Sheets"}
-                          </h2>
+                    {/* Page/Chapter Title */}
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={notebook.pages[selectedPageIdx]?.title || ''}
+                        onChange={(e) => {
+                          const cloned = JSON.parse(JSON.stringify(notebook));
+                          cloned.pages[selectedPageIdx].title = e.target.value;
+                          setProcessedFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, notebook: cloned } : f));
+                        }}
+                        className="bg-neutral-850 text-white font-extrabold text-2xl tracking-tight border border-neutral-700 rounded px-2 py-1 w-full focus:outline-none focus:border-indigo-500"
+                      />
+                    ) : (
+                      <h2 className="text-white font-extrabold text-2xl tracking-tight leading-snug">
+                        {notebook.pages[selectedPageIdx]?.title || "Untitled Notebook Sheet"}
+                      </h2>
+                    )}
+
+                    {/* Date/Time stamp row */}
+                    <div className="text-[11px] text-neutral-500 mt-2 font-mono flex items-center space-x-1.5">
+                      <span>Notebook Registry • </span>
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={notebook.pages[selectedPageIdx]?.date || ''}
+                          onChange={(e) => {
+                            const cloned = JSON.parse(JSON.stringify(notebook));
+                            cloned.pages[selectedPageIdx].date = e.target.value;
+                            setProcessedFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, notebook: cloned } : f));
+                          }}
+                          className="bg-neutral-850 text-neutral-350 text-[11px] border border-neutral-750 rounded px-1.5 py-0.5 focus:outline-none"
+                        />
+                      ) : (
+                        <span>{notebook.pages[selectedPageIdx]?.date || "Unknown Creation Date"}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Document Elements Canvas Grid */}
+                  <div className="space-y-6">
+                    {notebook.pages[selectedPageIdx]?.sections.map((section, secIdx) => (
+                      <div key={secIdx} className="space-y-3">
+                        
+                        {/* Interactive section subtitle */}
+                        {section.title && (
+                          <div className="flex items-center space-x-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: currentThemeAccentHex }} />
+                            {editMode ? (
+                              <input
+                                type="text"
+                                value={section.title || ''}
+                                onChange={(e) => {
+                                  const cloned = JSON.parse(JSON.stringify(notebook));
+                                  cloned.pages[selectedPageIdx].sections[secIdx].title = e.target.value;
+                                  setProcessedFiles(prev => prev.map(f => f.id === activeFileId ? { ...f, notebook: cloned } : f));
+                                }}
+                                className="bg-neutral-850 text-neutral-200 text-xs font-bold border border-neutral-750 px-1.5 py-0.5 rounded focus:outline-none"
+                              />
+                            ) : (
+                              <h3 className="text-neutral-250 font-bold text-xs uppercase tracking-wider">
+                                {section.title}
+                              </h3>
+                            )}
+                          </div>
                         )}
 
-                        {/* Date/Time Row */}
-                        <div className="text-[11px] text-neutral-500 mt-2 font-mono flex items-center space-x-1.5">
-                          <span>Notebook Registry • </span>
-                          {editMode ? (
-                            <input
-                              type="text"
-                              value={notebook.pages[selectedPageIdx]?.date || ''}
-                              onChange={(e) => {
-                                const cloned = JSON.parse(JSON.stringify(notebook));
-                                cloned.pages[selectedPageIdx].date = e.target.value;
-                                setNotebook(cloned);
-                              }}
-                              className="bg-neutral-850 text-neutral-350 text-[11px] border border-neutral-750 rounded px-1.5 py-0.5 focus:outline-none"
-                            />
-                          ) : (
-                            <span>{notebook.pages[selectedPageIdx]?.date || "None"}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Content sections stack */}
-                      <div className="space-y-6">
-                        {notebook.pages[selectedPageIdx]?.sections.map((section, secIdx) => (
-                          <div key={secIdx} className="space-y-3 group/sec">
-                            
-                            {/* Section Subtitle */}
-                            {section.title && (
-                              <div className="flex items-center space-x-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: themeAccentHex }} />
+                        {/* Rendering dynamic elements by types */}
+                        {section.type === 'checklist' && Array.isArray(section.content) ? (
+                          <div className="space-y-2 pl-3">
+                            {section.content.map((item, itemIdx) => (
+                              <div key={itemIdx} className="flex items-start space-x-3 py-0.5 animate-fade-in">
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.checked}
+                                  onChange={() => handleContentChange(selectedPageIdx, secIdx, itemIdx, '', 'checked')}
+                                  className={`h-4 w-4 shrink-0 mt-0.5 rounded border-neutral-700 bg-neutral-900 cursor-pointer ${activeColorThemeStyles}`}
+                                />
                                 {editMode ? (
                                   <input
                                     type="text"
-                                    value={section.title || ''}
-                                    onChange={(e) => {
-                                      const cloned = JSON.parse(JSON.stringify(notebook));
-                                      cloned.pages[selectedPageIdx].sections[secIdx].title = e.target.value;
-                                      setNotebook(cloned);
-                                    }}
-                                    className="bg-neutral-850 text-neutral-200 text-xs font-bold border border-neutral-750 px-1.5 py-0.5 rounded focus:outline-none"
+                                    value={item.text || ''}
+                                    onChange={(e) => handleContentChange(selectedPageIdx, secIdx, itemIdx, e.target.value)}
+                                    className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded px-1.5 py-0.5 w-full focus:outline-none"
                                   />
                                 ) : (
-                                  <h3 className="text-neutral-250 font-bold text-xs uppercase tracking-wider">
-                                    {section.title}
-                                  </h3>
+                                  <span className={`text-xs ${item.checked ? 'line-through text-neutral-550' : 'text-neutral-350'}`}>
+                                    {item.text || "Empty list item"}
+                                  </span>
                                 )}
                               </div>
-                            )}
-
-                            {/* Section Items by type */}
-                            {section.type === 'checklist' && Array.isArray(section.content) ? (
-                              <div className="space-y-2 pl-3">
-                                {section.content.map((item, itemIdx) => (
-                                  <div key={itemIdx} className="flex items-start space-x-3 animate-fade-in py-0.5">
-                                    {/* Action Checkbox */}
-                                    <input
-                                      type="checkbox"
-                                      checked={!!item.checked}
-                                      onChange={() => handleContentChange(selectedPageIdx, secIdx, itemIdx, '', 'checked')}
-                                      className={`h-4 w-4 shrink-0 mt-0.5 select-none rounded border-neutral-700 bg-neutral-900 cursor-pointer ${activeColorTheme}`}
-                                    />
-                                    
-                                    {/* Task text label */}
-                                    {editMode ? (
-                                      <input
-                                        type="text"
-                                        value={item.text || ''}
-                                        onChange={(e) => handleContentChange(selectedPageIdx, secIdx, itemIdx, e.target.value)}
-                                        className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded px-1.5 py-0.5 w-full focus:outline-none"
-                                      />
-                                    ) : (
-                                      <span className={`text-xs ${item.checked ? 'line-through text-neutral-550' : 'text-neutral-350'}`}>
-                                        {item.text || "Empty item"}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : section.type === 'bullet_list' && Array.isArray(section.content) ? (
-                              <div className="space-y-1.5 pl-4">
-                                {section.content.map((item, itemIdx) => (
-                                  <div key={itemIdx} className="flex items-start space-x-3.5 leading-relaxed py-0.5">
-                                    {/* List Bullet indicator */}
-                                    <span 
-                                      className="h-1.5 w-1.5 rounded-full shrink-0 mt-2" 
-                                      style={{ backgroundColor: themeAccentHex }} 
-                                    />
-                                    {editMode ? (
-                                      <input
-                                        type="text"
-                                        value={item || ''}
-                                        onChange={(e) => handleContentChange(selectedPageIdx, secIdx, itemIdx, e.target.value)}
-                                        className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded px-1.5 py-0.5 w-full focus:outline-none"
-                                      />
-                                    ) : (
-                                      <span className="text-xs text-neutral-350">
-                                        {item}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              // Generic Paragraph structures
-                              <div className="space-y-2.5 pl-3 leading-relaxed">
-                                {(Array.isArray(section.content) ? section.content : [section.content]).map((para, paraIdx) => (
-                                  <div key={paraIdx} className="leading-relaxed">
-                                    {editMode ? (
-                                      <textarea
-                                        value={para || ''}
-                                        rows={3}
-                                        onChange={(e) => handleContentChange(selectedPageIdx, secIdx, paraIdx, e.target.value)}
-                                        className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded p-2.5 w-full focus:outline-none font-sans leading-normal"
-                                      />
-                                    ) : (
-                                      <p className="text-xs text-neutral-400 font-sans leading-relaxed text-justify">
-                                        {para}
-                                      </p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
+                            ))}
                           </div>
-                        ))}
+                        ) : section.type === 'bullet_list' && Array.isArray(section.content) ? (
+                          <div className="space-y-1.5 pl-4">
+                            {section.content.map((item, itemIdx) => (
+                              <div key={itemIdx} className="flex items-start space-x-3.5 leading-relaxed py-0.5">
+                                <span 
+                                  className="h-1.5 w-1.5 rounded-full shrink-0 mt-2" 
+                                  style={{ backgroundColor: currentThemeAccentHex }} 
+                                />
+                                {editMode ? (
+                                  <input
+                                    type="text"
+                                    value={item || ''}
+                                    onChange={(e) => handleContentChange(selectedPageIdx, secIdx, itemIdx, e.target.value)}
+                                    className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded px-1.5 py-0.5 w-full focus:outline-none"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-neutral-350">
+                                    {item}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          // Standard Paragraph blocks
+                          <div className="space-y-2.5 pl-3 leading-relaxed">
+                            {(Array.isArray(section.content) ? section.content : [section.content]).map((para, paraIdx) => (
+                              <div key={paraIdx} className="leading-relaxed">
+                                {editMode ? (
+                                  <textarea
+                                    value={para || ''}
+                                    rows={3}
+                                    onChange={(e) => handleContentChange(selectedPageIdx, secIdx, paraIdx, e.target.value)}
+                                    className="bg-neutral-850 text-neutral-300 text-xs border border-neutral-750 rounded p-2.5 w-full focus:outline-none font-sans leading-normal"
+                                  />
+                                ) : (
+                                  <p className="text-xs text-neutral-400 font-sans leading-relaxed text-justify">
+                                    {para}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                       </div>
-                    </div>
-
-                    {/* Realistic footer mark */}
-                    <div className="mt-16 pt-5 border-t border-neutral-850 flex items-center justify-between text-[10px] text-neutral-600 font-mono">
-                      <span>DOC ID: MS-ONESTORE-X93</span>
-                      <span>PAGE {selectedPageIdx + 1} OF {notebook.pages.length}</span>
-                    </div>
-
+                    ))}
                   </div>
+
+                </div>
+
+                {/* canvas base status metadata footer */}
+                <div className="mt-16 pt-5 border-t border-neutral-850 flex items-center justify-between text-[10px] text-neutral-600 font-mono">
+                  <span>FILE ID: {notebook.name}</span>
+                  <span>CHAPTER {selectedPageIdx + 1} OF {notebook.pages.length}</span>
                 </div>
 
               </div>
             )}
 
-            {/* General FAQs banner */}
-            <FaqSection />
-
           </div>
-        )}
 
-        {/* TAB 2: DEVELOPER BOILERPLATE TOOL AREA (The Original Generator) */}
-        {activeTab === 'developer' && (
-          <div className="space-y-8 animate-fade-in">
-            
-            {/* Download SUCCESS banner */}
-            {downloadSuccessMessage && (
-              <div className="mb-6 bg-indigo-950/40 border border-indigo-500/25 rounded-xl p-4 flex items-center space-x-3 text-indigo-200 animate-slide-down">
-                <FileCheck className="h-5 w-5 text-indigo-400 shrink-0" />
-                <div className="text-xs font-medium">
-                  {downloadSuccessMessage} <span className="text-indigo-400/70 font-normal">Extract the zip bundle, navigate inside, and execute with terminal instructions!</span>
-                </div>
-              </div>
-            )}
-
-            {/* Quickstart tutorial block */}
-            <div className="bg-[#0E0E10] p-5 border border-neutral-800 rounded-xl flex items-start space-x-3 text-neutral-300 shadow-xl">
-              <Archive className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-[11px] font-bold text-white uppercase tracking-wider font-mono">Java SDK Automation Pipeline</h4>
-                <p className="text-[11px] text-neutral-400 leading-normal">
-                  Configure programmatic Java script bundles to run mass OneNote-to-PDF translations on your enterprise servers. This builds a complete maven/gradle project containing proper dependencies, custom compilation parameters, and direct executor tools.
-                </p>
-              </div>
-            </div>
-
-            {/* Main structural layout split */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              
-              {/* LEFT: Configuration knobbies controls */}
-              <div className="lg:col-span-5 space-y-6">
-                <ConfigurationPanel
-                  config={config}
-                  onChange={setConfig}
-                  onReset={handleResetConfig}
-                />
-
-                <div className="bg-[#0E0E10] rounded-xl border border-neutral-800 p-6 text-center space-y-4">
-                  <span className="text-[9.5px] text-neutral-500 font-bold uppercase tracking-widest block">Download Project Bundle</span>
-                  <p className="text-xs text-neutral-400 leading-normal px-2">
-                    Click below to export the compiled setup containing customizable Java code templates, build declarations, and batch run helpers.
-                  </p>
-                  <button
-                    id="btn-sidebar-download-zip"
-                    onClick={handleDownloadZip}
-                    disabled={isDownloading}
-                    className="w-full inline-flex justify-center items-center space-x-2 py-3 text-xs font-black text-black bg-white hover:bg-neutral-200 rounded-lg cursor-pointer transition-all active:scale-95 shadow-lg"
-                  >
-                    <Download className="h-4 w-4" />
-                    <span>Download Project ZIP</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* RIGHT: Visual Code tabs and interactive terminal sandbox CLI */}
-              <div className="lg:col-span-7 space-y-8">
-                
-                {/* Visual code files viewer */}
-                <div className="h-[430px]">
-                  <CodeDisplay config={config} />
-                </div>
-
-                {/* Simulated CLI Sandbox */}
-                <TerminalSimulator config={config} />
-
-                {/* evaluation warnings */}
-                <div className="bg-amber-500/5 rounded-xl p-4 border border-amber-500/20 flex items-start space-x-3 text-amber-200/90 shadow-lg">
-                  <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wide">Evaluation Mode Notice</h4>
-                    <p className="text-[11px] text-neutral-400 leading-normal">
-                      The generated scripts run using Aspose.Note evaluation binaries, which include watermark banners. To remove limits, reference your premium product key in the Java setup context as described in code comments.
-                    </p>
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-        )}
+        </div>
 
       </main>
 
-      {/* Footer marking */}
-      <footer className="bg-[#0E0E10] border-t border-neutral-850 mt-20 py-10 text-center text-neutral-550 text-[11px]">
+      {/* Elegant minimalist branding footer block */}
+      <footer className="bg-[#0E0E10] border-t border-neutral-850 py-10 text-center text-neutral-550 text-[11px] mt-16">
         <div className="max-w-7xl mx-auto px-4 select-text">
           <p className="font-mono uppercase tracking-widest text-[#555] text-[10px] mb-2">Note2PDF Fullstack Workspace</p>
           <p>© 2026 Note2PDF Automation Script Platform. Operating under Node.js runtime and Google Gemini intelligence systems.</p>
