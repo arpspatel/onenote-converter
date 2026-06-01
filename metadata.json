@@ -1,6 +1,6 @@
 {
   "name": "OneNote to PDF Java Script Generator",
-  "description": "Generate ready-to-run Java scripts and build files (Maven/Gradle) to easily convert Microsoft OneNote (.one) files to PDF using Aspose.Note.",
+  "description": "Directly upload and convert Microsoft OneNote (.one) files to beautifully formatted PDFs, or generate self-contained programmatic Java script bundles easily.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

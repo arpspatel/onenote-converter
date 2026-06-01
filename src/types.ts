@@ -29,6 +29,25 @@ export interface GeneratedCode {
   runScript: string;
 }
 
+export interface OnePageSection {
+  type: 'paragraph' | 'bullet_list' | 'checklist' | 'table';
+  title?: string;
+  content: any; // Can be string[] for paragraphs/bullets, checklist items {text, checked}[], or tables
+}
+
+export interface OnePage {
+  title: string;
+  date: string;
+  sections: OnePageSection[];
+}
+
+export interface OneNotebook {
+  name: string;
+  summary: string;
+  pages: OnePage[];
+  engine: string;
+}
+
 export interface SimStep {
   id: string;
   title: string;
