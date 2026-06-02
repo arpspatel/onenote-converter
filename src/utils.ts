@@ -50,7 +50,6 @@ const FALLBACK_TSCONFIG = `{
         "./*"
       ]
     },
-    "allowImportingTsExtensions": true,
     "noEmit": true
   }
 }
@@ -65,8 +64,8 @@ const FALLBACK_PACKAGE_JSON = `{
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --external:* --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && ncc build server.ts -o dist --minify",
+    "start": "node dist/index.js",
     "clean": "node -e \\\"const fs = require('fs'); ['dist', 'dist-desktop', 'server.js'].forEach(p => fs.rmSync(p, { recursive: true, force: true }))\\\"",
     "lint": "tsc --noEmit"
   },
@@ -88,6 +87,7 @@ const FALLBACK_PACKAGE_JSON = `{
     "@types/express": "^4.17.21",
     "@types/jszip": "^3.4.0",
     "@types/node": "^22.14.0",
+    "@vercel/ncc": "^0.38.1",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",

@@ -7,11 +7,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Download, BookOpen, FileCheck, HelpCircle, AlertCircle, 
   Upload, FileText, Sparkles, Trash2, ChevronRight, Edit2, 
-  CheckCircle2, RefreshCw, X, Laptop
+  CheckCircle2, RefreshCw, X
 } from 'lucide-react';
 import { OneNotebook, OnePage, OnePageSection } from './types';
 import { generatePdfFromNotebook } from './pdfGenerator';
-import { downloadPortableApp } from './utils';
 
 interface ProcessedFile {
   id: string;
@@ -115,27 +114,6 @@ export default function App() {
   const [themeColor, setThemeColor] = useState<'indigo' | 'emerald' | 'rose' | 'neutral' | 'amber'>('indigo');
   const [editMode, setEditMode] = useState<boolean>(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [isExportingWorkspace, setIsExportingWorkspace] = useState(false);
-
-  const handleDownloadPortableApp = async () => {
-    setIsExportingWorkspace(true);
-    try {
-      const blob = await downloadPortableApp();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Note2PDF_Standalone_Workspace.zip`;
-      document.body.appendChild(link);
-      link.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(link);
-    } catch (err: any) {
-      console.error("Workspace bundler error:", err);
-      alert("Error building standalone workspace package: " + err.message);
-    } finally {
-      setIsExportingWorkspace(false);
-    }
-  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -559,39 +537,6 @@ export default function App() {
                   );
                 })}
               </div>
-            </div>
-
-            {/* PORTABLE DESKTOP WORKSPACE */}
-            <div className="bg-[#0E0E10] border border-neutral-800 rounded-xl p-5 shadow-xl space-y-4">
-              <div className="flex items-center space-x-2.5 border-b border-neutral-850 pb-2.5">
-                <span className="p-1.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
-                  <Laptop className="h-4 w-4" />
-                </span>
-                <span className="text-[10px] text-neutral-400 font-black uppercase tracking-widest block">
-                  Portable Electron App (.EXE)
-                </span>
-              </div>
-              <p className="text-[11px] text-neutral-500 leading-relaxed font-sans">
-                Compile this watermark-free app directly into a standalone desktop program. Run it offline on your workstation as a real desktop window, or bundle it into a single-file portable Windows executable (<code className="bg-[#121216] text-indigo-300 px-1 py-0.5 rounded font-mono">.exe</code>), macOS app, or Linux distribution in one click!
-              </p>
-              <button
-                type="button"
-                onClick={handleDownloadPortableApp}
-                disabled={isExportingWorkspace}
-                className="w-full inline-flex items-center justify-center space-x-2 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg cursor-pointer transition-all active:scale-95 border border-indigo-500/30"
-              >
-                {isExportingWorkspace ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                    <span>Packaging Electron sources...</span>
-                  </>
-                ) : (
-                  <>
-                    <Laptop className="h-3.5 w-3.5 shrink-0" />
-                    <span>Download Desktop Executable Package</span>
-                  </>
-                )}
-              </button>
             </div>
 
             {/* EXPORT SPECIFICATIONS */}
