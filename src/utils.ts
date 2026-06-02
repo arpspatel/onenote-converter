@@ -67,7 +67,7 @@ const FALLBACK_PACKAGE_JSON = `{
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "electron:start": "npm run build && electron .",
-    "compile:exe": "npm run build && electron-builder --win portable",
+    "compile:exe": "taskkill /f /im Note2PDF_Converter.exe /t 2>nul & npm run build && electron-builder --win portable",
     "compile:mac": "npm run build && electron-builder --mac",
     "compile:linux": "npm run build && electron-builder --linux",
     "clean": "rm -rf dist dist-desktop server.js"
