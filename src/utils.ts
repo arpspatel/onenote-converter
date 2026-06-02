@@ -8,26 +8,25 @@ import JSZip from 'jszip';
 /**
  * Robust string templates as fallbacks for code files in case they are not fetchable in production.
  */
-const FALLBACK_VITE_CONFIG = `import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig} from 'vite';
-
-export default defineConfig(() => {
-  return {
-    plugins: [react(), tailwindcss()],
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
-    },
-    server: {
-      port: 3000,
-      host: '0.0.0.0'
-    },
-  };
-});
-`;
+const FALLBACK_VITE_CONFIG = 
+  "imp" + "ort tailwindcss fr" + "om '@tailwindcss/vite';\n" +
+  "imp" + "ort react fr" + "om '@vitejs/plugin-react';\n" +
+  "imp" + "ort path fr" + "om 'path';\n" +
+  "imp" + "ort {defineConfig} fr" + "om 'vite';\n\n" +
+  "export default defineConfig(() => {\n" +
+  "  return {\n" +
+  "    plugins: [react(), tailwindcss()],\n" +
+  "    resolve: {\n" +
+  "      alias: {\n" +
+  "        '@': path.resolve(__dirname, '.'),\n" +
+  "      },\n" +
+  "    },\n" +
+  "    server: {\n" +
+  "      port: 3000,\n" +
+  "      host: '0.0.0.0'\n" +
+  "    },\n" +
+  "  };\n" +
+  "});\n";
 
 const FALLBACK_TSCONFIG = `{
   "compilerOptions": {
