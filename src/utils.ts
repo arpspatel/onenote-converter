@@ -67,7 +67,7 @@ const FALLBACK_PACKAGE_JSON = `{
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "electron:start": "npm run build && electron .",
-    "compile:exe": "taskkill /f /im Note2PDF_Converter.exe /t 2>nul & taskkill /f /im Note2PDF_Converter* /t 2>nul & taskkill /f /im Note2PDF* /t 2>nul & taskkill /f /im electron.exe /t 2>nul & npm run build && electron-builder --win portable",
+    "compile:exe": "taskkill /f /im Note2PDF_Converter.exe /t 2>nul & taskkill /f /im Note2PDF* /t 2>nul & taskkill /f /im electron* /t 2>nul & powershell -Command \"Stop-Process -Name *Note2PDF* -Force -ErrorAction SilentlyContinue; Stop-Process -Name electron -Force -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process -Filter 'Name = \\\"node.exe\\\"' -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*server.cjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\" 2>nul & npm run build && electron-builder --win portable",
     "compile:mac": "npm run build && electron-builder --mac",
     "compile:linux": "npm run build && electron-builder --linux",
     "clean": "rm -rf dist dist-desktop server.js"
@@ -157,26 +157,18 @@ const ELECTRON_MAIN_SCRIPT = `/**
  */
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { fork } = require('child_process');
 
-let backendProcess = null;
-let mainWindow = null;
+// Run the Express backend directly in the main Electron thread to prevent orphaned processes or locks
+process.env.NODE_ENV = 'production';
+process.env.PORT = '3000';
 
-function runBackendProcess() {
-  const binaryServerPath = path.join(__dirname, 'dist', 'server.cjs');
-  
-  // Bind to PORT 3000
-  backendProcess = fork(binaryServerPath, [], {
-    env: { ...process.env, NODE_ENV: 'production', PORT: '3000' }
-  });
-
-  backendProcess.on('error', (err) => {
-    console.error('Failed to spin background Express stream server:', err);
-  });
-
-  // Delay browser container mapping until local endpoints are bound
-  setTimeout(spawnElectronWindow, 2000);
+try {
+  require('./dist/server.cjs');
+} catch (err) {
+  console.error('Failed to initialize embedded Express conversion server:', err);
 }
+
+let mainWindow = null;
 
 function spawnElectronWindow() {
   mainWindow = new BrowserWindow({
@@ -202,13 +194,11 @@ function spawnElectronWindow() {
 }
 
 app.whenReady().then(() => {
-  runBackendProcess();
+  // Graceful boot delay for clean Express binding
+  setTimeout(spawnElectronWindow, 1000);
 });
 
 app.on('window-all-closed', () => {
-  if (backendProcess) {
-    backendProcess.kill();
-  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
