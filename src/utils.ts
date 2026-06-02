@@ -58,15 +58,20 @@ const FALLBACK_TSCONFIG = `{
 `;
 
 const FALLBACK_PACKAGE_JSON = `{
-  "name": "note2pdf-portable-workspace",
+  "name": "note2pdf-desktop-workspace",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "main": "electron.js",
+  "type": "commonjs",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "clean": "rm -rf dist server.js"
+    "electron:start": "npm run build && electron .",
+    "compile:exe": "npm run build && electron-builder --win portable",
+    "compile:mac": "npm run build && electron-builder --mac",
+    "compile:linux": "npm run build && electron-builder --linux",
+    "clean": "rm -rf dist dist-desktop server.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -88,9 +93,39 @@ const FALLBACK_PACKAGE_JSON = `{
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "electron": "^31.3.1",
+    "electron-builder": "^25.0.5",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"
+  },
+  "build": {
+    "appId": "org.note2pdf.desktop",
+    "productName": "Note2PDF_Converter",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "dist/**/*",
+      "electron.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
   }
 }
 `;
@@ -114,6 +149,77 @@ const FALLBACK_INDEX_HTML = `<!doctype html>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
+`;
+
+// Electron Main entry process configuration script
+const ELECTRON_MAIN_SCRIPT = `/**
+ * Note2PDF Standalone Electron Shell Launcher
+ * Controls local background Express conversion stream servers and chromium display ports.
+ */
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const { fork } = require('child_process');
+
+let backendProcess = null;
+let mainWindow = null;
+
+function runBackendProcess() {
+  const binaryServerPath = path.join(__dirname, 'dist', 'server.cjs');
+  
+  // Bind to PORT 3000
+  backendProcess = fork(binaryServerPath, [], {
+    env: { ...process.env, NODE_ENV: 'production', PORT: '3000' }
+  });
+
+  backendProcess.on('error', (err) => {
+    console.error('Failed to spin background Express stream server:', err);
+  });
+
+  // Delay browser container mapping until local endpoints are bound
+  setTimeout(spawnElectronWindow, 2000);
+}
+
+function spawnElectronWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 850,
+    minWidth: 1024,
+    minHeight: 700,
+    title: "Note2PDF Watermark-Free Converter",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    },
+    backgroundColor: '#0A0A0B',
+    autoHideMenuBar: true
+  });
+
+  // Map local Express workspace pipeline port
+  mainWindow.loadURL('http://localhost:3000');
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+app.whenReady().then(() => {
+  runBackendProcess();
+});
+
+app.on('window-all-closed', () => {
+  if (backendProcess) {
+    backendProcess.kill();
+  }
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    spawnElectronWindow();
+  }
+});
 `;
 
 // Helper script launchers to run offline / locally
@@ -142,14 +248,12 @@ echo [2/3] Compiling optimized React web views and Express compilation outputs..
 call npm run build
 
 echo.
-echo [3/3] Opening your local converter interface dashboard web port...
-start http://localhost:3000
+echo [3/3] Opening your local converter interface dashboard inside Electron shell...
+echo Spawning window interface...
+call npm run electron:start
 
 echo.
-echo 🚀 Sparking local NodeJS pipeline server! Maintain this command terminal open.
-echo To terminate development container, press Ctrl+C inside this block.
 echo =======================================================================
-call npm run start
 pause
 `;
 
@@ -177,76 +281,75 @@ echo "[2/3] Compiling optimized React web views and Express compilation outputs.
 npm run build
 
 echo ""
-echo "[3/3] Opening your local converter interface dashboard web port..."
-if command -v open &> /dev/null; then
-  open "http://localhost:3000"
-elif command -v xdg-open &> /dev/null; then
-  xdg-open "http://localhost:3000"
-else
-  echo " 👉 Please open your browser and navigate to: http://localhost:3000"
-fi
+echo "[3/3] Launching clean Electron applet..."
+npm run electron:start
 
 echo ""
-echo "🚀 Sparking local NodeJS pipeline server! Maintain this command terminal open."
-echo "To terminate development container, press Ctrl+C inside this block."
 echo "======================================================================="
-npm run start
 `;
 
-const PORTABLE_README = `# Note2PDF Desktop Portable Workspace (Standalone App)
+const PORTABLE_README = `# Note2PDF Desktop Electron App & Portable \`.exe\` Builder
 
-Welcome to the standalone, self-contained desktop package of your **Note2PDF Watermark-Free Converter App**. You can run this application entirely on your local machine, offline or online, with zero limitations.
-
----
-
-## 🛠️ Requirements
-
-1. **Node.js (LTS Version 18, 20 or higher)**
-   - Verify installation by opening a terminal/cmd and typing: \`node -v\`
-   - If not installed, download the official LTS build from [https://nodejs.org/](https://nodejs.org/).
+Welcome to the standalone, self-contained desktop package of your **Note2PDF Watermark-Free Converter App**. This bundle is pre-configured with **Electron** and **electron-builder** to package your app into a standalone double-clickable executable (e.g. \`.exe\` on Windows).
 
 ---
 
-## 🚀 Quick Start (Single Click Launcher)
+## 🛠️ Step-by-Step: Compiling a Standalone Portable \`.exe\`
 
-Inside this root folder, double-click the starter launcher corresponding to your operating system:
+To package this application into a custom single-file **\`Note2PDF_Converter.exe\`** (or equivalent macOS \`.dmg\` / Linux \`.AppImage\` executable):
+
+1. **Requirements**: 
+   Ensure you have **Node.js (LTS Version 18 or newer)** installed. Verification command: \`node -v\`
+
+2. **Setup Dependencies**:
+   Open a terminal (Command Prompt or PowerShell) inside this extracted folder and run:
+   \`\`\`bash
+   npm install
+   \`\`\`
+
+3. **Compile the Standalone Executable File**:
+   Run the specific compile command for your operating system:
+   
+   - **For Windows (.exe)**:
+     \`\`\`bash
+     npm run compile:exe
+     \`\`\`
+   - **For macOS (.dmg)**:
+     \`\`\`bash
+     npm run compile:mac
+     \`\`\`
+   - **For Linux (.AppImage)**:
+     \`\`\`bash
+     npm run compile:linux
+     \`\`\`
+
+4. **Retrieve Your App**:
+   Once finished, a new folder named **\`dist-desktop/\`** will appear in this directory. 
+   Inside, you will find your compiled, self-contained **\`Note2PDF_Converter.exe\`** (Portable Executable) that runs directly with one click!
+
+---
+
+## 🚀 Running locally inside Electron (Without compiling)
+
+If you don't need the final executable yet and just want to run the app as a local desktop window, double-click the included automation launcher:
 
 - **Windows**: Double-click \`start-portable-app.bat\`
-- **macOS / Linux**: 
-  1. Open a terminal prompt inside this extracted directory level.
-  2. Grant runtime permission once: \`chmod +x start-portable-app.sh\`
-  3. Execute directly: \`./start-portable-app.sh\`
+- **macOS / Linux**: Run \`./start-portable-app.sh\` (run \`chmod +x start-portable-app.sh\` first if needed)
 
-The installer launcher automatically:
-- Installs all local dependencies.
-- Bundles fully-optimized static HTML web routes inside \`dist/\`.
-- Packages the Express binary scanner pipelines.
-- Spawns a local host port on **\`http://localhost:3000\`**.
-- Auto-launches your local browser dashboard!
+This installs dependencies, bundles assets, and opens your converter in a clean, menu-free desktop window frame using Electron.
 
 ---
 
-## 🧠 Optional: Activating Intelligent Gemini AI Engine Locally
+## 🧠 Optional: Activating Gemini Intelligence
+By default, the offline standalone application uses the built-in **Native Binary Stream Parser**, which translates notebook sections to PDFs inside your browser. 
 
-By default, the offline standalone application uses the built-in **Native Binary Stream Parser Heuristics**, which perfectly translates pages, bulleted items, and checklist tasks and exports standard A4 vector PDFs inside your browser.
-
-To activate the smart **Google Gemini AI Compiler** locally:
-
-1. Obtain a free or pay-as-you-go Gemini API Key from Google AI Studio.
-2. Locate the file named \`.env\` in this root folder (or duplicate \`.env.example\` and rename it to \`.env\`).
-3. Set your credential:
+To activate the smart **Google Gemini AI Compiler** in your desktop app:
+1. Locate the file named \`.env\` in this extracted folder.
+2. Set your credential:
    \`\`\`env
    GEMINI_API_KEY=your_actual_api_key_here
    \`\`\`
-4. Restart your application. The local Node.js Express server will automatically detect the key, and convert with Gemini-guided structure layouts!
-
----
-
-## 📂 Source Code & Modular Extension
-This zip represents a highly-optimized fullstack React + Express boilerplate codebase. Feel free to modify, integrate more styles, or change features in:
-- \`server.ts\` (Binary stream parser, express routing, Gemini proxy)
-- \`src/App.tsx\` (Frontend drag-and-drop dashboard portal)
-- \`src/pdfGenerator.ts\` (Custom page margins and PDF templates)
+3. Startup or compile your app. The compiled EXE or start scripts will pick up this local variable and run Google Gemini intelligence locally!
 `;
 
 /**
@@ -292,6 +395,7 @@ export async function downloadPortableApp(): Promise<Blob> {
   zip.file('.env.example', envExample);
   zip.file('.env', envExample); // Create a handy .env copy matching the template file
   zip.file('server.ts', serverTs);
+  zip.file('electron.js', ELECTRON_MAIN_SCRIPT);
 
   // 3. Add launchers & instruction readmes
   zip.file('start-portable-app.bat', WINDOWS_LAUNCHER);

@@ -568,11 +568,11 @@ export default function App() {
                   <Laptop className="h-4 w-4" />
                 </span>
                 <span className="text-[10px] text-neutral-400 font-black uppercase tracking-widest block">
-                  Standalone Desktop App
+                  Portable Electron App (.EXE)
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 leading-relaxed font-sans">
-                Convert this watermark-free converter into a standalone desktop program. Run it offline/locally on your workstation (Windows, macOS, Linux) with automatic single-click startup scripts included.
+                Compile this watermark-free app directly into a standalone desktop program. Run it offline on your workstation as a real desktop window, or bundle it into a single-file portable Windows executable (<code className="bg-[#121216] text-indigo-300 px-1 py-0.5 rounded font-mono">.exe</code>), macOS app, or Linux distribution in one click!
               </p>
               <button
                 type="button"
@@ -583,12 +583,12 @@ export default function App() {
                 {isExportingWorkspace ? (
                   <>
                     <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                    <span>Packaging Node Sources...</span>
+                    <span>Packaging Electron sources...</span>
                   </>
                 ) : (
                   <>
                     <Laptop className="h-3.5 w-3.5 shrink-0" />
-                    <span>Download Desktop Package</span>
+                    <span>Download Desktop Executable Package</span>
                   </>
                 )}
               </button>
