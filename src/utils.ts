@@ -64,7 +64,7 @@ const FALLBACK_PACKAGE_JSON = `{
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && ncc build server.ts -o dist --minify",
+    "build": "vite build && ncc build server.ts -o dist --minify -e vite",
     "start": "node dist/index.js",
     "clean": "node -e \\\"const fs = require('fs'); ['dist', 'dist-desktop', 'server.js'].forEach(p => fs.rmSync(p, { recursive: true, force: true }))\\\"",
     "lint": "tsc --noEmit"
