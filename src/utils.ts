@@ -60,7 +60,7 @@ const FALLBACK_PACKAGE_JSON = `{
   "name": "note2pdf-desktop-workspace",
   "private": true,
   "version": "1.0.0",
-  "main": "electron.js",
+  "main": "electron.cjs",
   "type": "commonjs",
   "scripts": {
     "dev": "tsx server.ts",
@@ -106,7 +106,7 @@ const FALLBACK_PACKAGE_JSON = `{
     },
     "files": [
       "dist/**/*",
-      "electron.js",
+      "electron.cjs",
       "package.json"
     ],
     "win": {
@@ -394,7 +394,7 @@ export async function downloadPortableApp(): Promise<Blob> {
   zip.file('.env.example', envExample);
   zip.file('.env', envExample); // Create a handy .env copy matching the template file
   zip.file('server.ts', serverTs);
-  zip.file('electron.js', ELECTRON_MAIN_SCRIPT);
+  zip.file('electron.cjs', ELECTRON_MAIN_SCRIPT);
 
   // 3. Add launchers & instruction readmes
   zip.file('start-portable-app.bat', WINDOWS_LAUNCHER);
